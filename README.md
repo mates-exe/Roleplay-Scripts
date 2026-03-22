@@ -60,5 +60,3 @@ Všeobecné herní systémy nezařazené do konkrétních složek:
 ## ⚠️ Závislosti (Addony)
 Zkontrolujte kód jednotlivých skriptů. Je pravděpodobné, že některé pokročilé funkce (např. Discord propojení, inventáře, NBT tagy) budou kromě základního pluginu Skript vyžadovat populární addony, jako např.:
 - **SkBee** (NBT, recepty, scoreboardy)
-- **Vixio** nebo **DiSky** (Propojení s Discordem, využíváno v `discord.sk`)
-- **Skript-GUI** / **TuSKe** (Tvorba inventářů a menu)

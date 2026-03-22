@@ -1,0 +1,182 @@
+# =================================================================
+# SYSTÉM: SMARAGDOVÝ SESTUP 3.3 (PLINKO - STABLE MATH)
+# =================================================================
+
+options:
+    prefix: &8[&6Sestup&8] &r
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    bg: black stained glass pane named " "
+    ball: emerald named "&a&lSmaragd osudu"
+    peg: iron bars named "&7Překážka"
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setplinko:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {plinko.loc} to location of target block
+            send "{@prefix} &aHra Plinko nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {plinko.loc} is set:
+        if location of event-block is {plinko.loc}:
+            cancel event
+            if {plinko.active::%player%} is set:
+                send "{@prefix} &cTvoje hra už probíhá!" to player
+                stop
+            set {plinko.bet::%player%} to 0
+            openPlinko(player)
+
+# --- 3. GUI ---
+function openPlinko(p: player):
+    set {_gui} to chest inventory with 6 rows named "Smaragdový sestup"
+    loop 54 times:
+        set slot (loop-number - 1) of {_gui} to {@bg}
+    
+    # Rozmístění překážek (Pyramida)
+    set {_pegs::*} to 13, 21, 23, 29, 31, 33, 37, 39, 41 and 43
+    loop {_pegs::*}:
+        set slot loop-value of {_gui} to {@peg}
+
+    # Násobitele na dně (Sloty 45 až 53)
+    set slot 45 of {_gui} to red concrete named "&c&l4.0x"
+    set slot 46 of {_gui} to orange concrete named "&6&l2.0x"
+    set slot 47 of {_gui} to yellow concrete named "&e&l1.1x"
+    set slot 48 of {_gui} to white concrete named "&f&l0.5x"
+    set slot 49 of {_gui} to lime concrete named "&a&l0.2x"
+    set slot 50 of {_gui} to white concrete named "&f&l0.5x"
+    set slot 51 of {_gui} to yellow concrete named "&e&l1.1x"
+    set slot 52 of {_gui} to orange concrete named "&6&l2.0x"
+    set slot 53 of {_gui} to red concrete named "&c&l4.0x"
+    
+    set slot 4 of {_gui} to {@ball}
+    
+    set slot 17 of {_gui} to paper named "&f+ 1 000$"
+    set slot 26 of {_gui} to paper named "&f+ 5 000$"
+    set slot 35 of {_gui} to paper named "&f+ 10 000$"
+    set slot 44 of {_gui} to barrier named "&cReset"
+    set slot 8 of {_gui} to sunflower named "&6&l&nSPUSTIT SMARAGD" with lore "&7Cena: &e%{plinko.bet::%{_p}%}%$"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Smaragdový sestup":
+        cancel event
+        set {_p} to player
+        if {plinko.active::%{_p}%} is not set:
+            if index of clicked slot is 17, 26 or 35:
+                set {_add} to 1000 if index of clicked slot is 17
+                set {_add} to 5000 if index of clicked slot is 26
+                set {_add} to 10000 if index of clicked slot is 35
+                add {_add} to {plinko.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+                set slot 8 of event-inventory to sunflower named "&6&l&nSPUSTIT SMARAGD" with lore "&7Cena: &e%{plinko.bet::%{_p}%}%$"
+            if clicked slot is 44:
+                set {plinko.bet::%{_p}%} to 0
+                set slot 8 of event-inventory to sunflower named "&6&l&nSPUSTIT SMARAGD" with lore "&7Cena: 0$"
+                play sound "block.lava.extinguish" at {_p}
+            if clicked slot is 8:
+                if {plinko.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit!" to {_p}
+                    stop
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš žeton!" to {_p}
+                    stop
+                if {_p}'s balance < {plinko.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš peníze!" to {_p}
+                    stop
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{plinko.bet::%{_p}%}%"
+                payKasinoShare({_p})
+                startPlinkoGame({_p}, event-inventory)
+
+# --- 5. ANIMACE PÁDU (OPRAVENÁ MATEMATIKA) ---
+function startPlinkoGame(p: player, inv: inventory):
+    set {plinko.active::%{_p}%} to true
+    set {plinko.current_inv::%{_p}%} to {_inv}
+    
+    set {_pos} to 4 # Startovní slot
+    
+    # Potřebujeme 4 skoky, abychom se dostali do předposlední řady (sloty 36-44)
+    loop 4 times:
+        set {_prev} to {_pos}
+        
+        # Simulace odrazu: doleva (+8) nebo doprava (+10)
+        if random integer between 1 and 2 is 1:
+            add 8 to {_pos}
+        else:
+            add 10 to {_pos}
+            
+        # MANTINELY: Pokud narazí na okraj hracího pole (sloupce 0 a 8), odrazí se zpět do středu
+        if mod({_pos}, 9) is 0: # Narazil úplně vlevo
+            add 1 to {_pos}
+        if mod({_pos}, 9) is 8: # Narazil úplně vpravo
+            remove 1 from {_pos}
+            
+        if name of {_p}'s current inventory is "Smaragdový sestup":
+            set slot {_prev} of {_inv} to {@bg}
+            set slot {_pos} of {_inv} to {@ball}
+            play sound "block.note_block.bit" with volume 0.5 and pitch (0.6 + (loop-number / 5)) at {_p}
+        
+        wait 7 ticks
+
+    # --- POSLEDNÍ SKOK NA DNO (Řada 45-53) ---
+    set {_prev} to {_pos}
+    set {_move} to random element out of 8, 9 and 10
+    add {_move} to {_pos}
+    
+    # Pojistka, aby se trefil do spodní řady 45-53
+    if {_pos} < 45:
+        set {_pos} to 45
+    if {_pos} > 53:
+        set {_pos} to 53
+    
+    # Vyčištění poslední pozice před dopadem
+    set slot {_prev} of {_inv} to {@bg}
+
+    # --- MAPOVÁNÍ VÝHER ---
+    set {_multiplier} to 0.2 # Default střed
+    if {_pos} is 45 or 53:
+        set {_multiplier} to 4.0
+    else if {_pos} is 46 or 52:
+        set {_multiplier} to 2.0
+    else if {_pos} is 47 or 51:
+        set {_multiplier} to 1.1
+    else if {_pos} is 48 or 50:
+        set {_multiplier} to 0.5
+    
+    set {_finalWin} to floor({plinko.bet::%{_p}%} * {_multiplier})
+    
+    # Efekt dopadu
+    set slot {_pos} of {_inv} to emerald block named "&a&lDOPAD!" with lore "&7Násobitel: &e%{_multiplier}%x"
+    
+    wait 10 ticks
+    
+    if {_finalWin} > 0:
+        execute console command "eco give %{_p}% %{_finalWin}%"
+        
+    if {_multiplier} >= 1.0:
+        send "{@prefix} &a&lVÝHRA! &fSmaragd dopadl na &e%{_multiplier}%x &fa získáváš &6%{_finalWin}%$" to {_p}
+        play sound "entity.player.levelup" at {_p}
+    else:
+        send "{@prefix} &c&lZTRÁTA. &7Smaragd dopadl na &e%{_multiplier}%x&7. Vráceno &f%{_finalWin}%$" to {_p}
+        play sound "block.conduit.deactivate" with volume 0.5 at {_p}
+        
+    delete {plinko.active::%{_p}%}
+    delete {plinko.current_inv::%{_p}%}
+    
+    if name of {_p}'s current inventory is "Smaragdový sestup":
+        close inventory of {_p}
+
+on inventory close:
+    if name of event-inventory is "Smaragdový sestup":
+        if {plinko.active::%player%} is true:
+            wait 1 tick
+            open {plinko.current_inv::%player%} to player
+
+on quit:
+    delete {plinko.active::%player%}

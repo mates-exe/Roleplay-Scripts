@@ -1,0 +1,192 @@
+# =================================================================
+# SYSTÉM STÍRACÍCH LOSŮ 3.0 - SAFE CMD VERZE (Ancient RP)
+# =================================================================
+
+options:
+    prefix: &8[&6Losy&8] &r
+    cover: white stained glass pane named "&7&lStírací pole" with lore "&eKliknutím setři!"
+    
+    # --- REGISTRY CUSTOM MODEL DATA ---
+    cmd_bronz: 5001
+    cmd_stribro: 5002
+    cmd_zlato: 5003
+
+# --- 1. ADMIN PŘÍKAZ (GIVE S CMD) ---
+command /givelos <player> <text>:
+    permission: rp.admin
+    trigger:
+        if arg-2 is "bronz":
+            set {_i} to paper named "&f&lBronzový Los"
+            set lore of {_i} to "&7Zkus štěstí!" and "&8ID: ##5001"
+            set custom model data of {_i} to {@cmd_bronz}
+            give {_i} to arg-1
+        else if arg-2 is "stribro":
+            set {_i} to paper named "&e&lStříbrný Los"
+            set lore of {_i} to "&7Šance na pěkný balík!" and "&8ID: ##5002"
+            set custom model data of {_i} to {@cmd_stribro}
+            give {_i} to arg-1
+        else if arg-2 is "zlato":
+            set {_i} to paper named "&6&l&nZlatý Královský Los"
+            set lore of {_i} to "&bObrovské výhry!" and "&8ID: ##5003"
+            set custom model data of {_i} to {@cmd_zlato}
+            give {_i} to arg-1
+        else:
+            send "{@prefix} &c/givelos <nick> <bronz/stribro/zlato>"
+
+# --- 2. OTEVŘENÍ LOSU (KONTROLA PŘES CMD) ---
+on right click holding paper:
+    set {_cmd} to custom model data of player's tool
+    
+    # Kontrola, zda má item jedno z našich validních ID
+    if {_cmd} is {@cmd_bronz}, {@cmd_stribro} or {@cmd_zlato}:
+        cancel event
+        
+        # Určení tieru podle ID (ne podle jména!)
+        set {_tier} to 1
+        if {_cmd} is {@cmd_stribro}:
+            set {_tier} to 2
+        else if {_cmd} is {@cmd_zlato}:
+            set {_tier} to 3
+            
+        remove 1 of player's tool from player
+        openScratchCard(player, {_tier})
+    else:
+        # Pokud se hráč pokusí použít přejmenovaný papír z kovadliny (který má CMD 0)
+        if uncolored name of player's tool contains "Los":
+            send "{@prefix} &cTento los je padělek! Originály mají magickou pečeť." to player
+
+# --- 3. LOGIKA GENEROVÁNÍ ---
+function openScratchCard(p: player, tier: number):
+    set {_gui} to chest inventory with 3 rows named "Stírací Los - %{_p}%"
+    loop 27 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+    
+    set {_slots::*} to 3, 4, 5, 12, 13, 14, 21, 22 and 23
+    
+    loop 9 times:
+        if {_tier} is 1:
+            set {los.%{_p}%.val::%loop-number%} to random integer between 1 and 22 
+        else if {_tier} is 2:
+            set {los.%{_p}%.val::%loop-number%} to random integer between 1 and 16 
+        else:
+            set {los.%{_p}%.val::%loop-number%} to random integer between 1 and 12
+            
+    loop {_slots::*}:
+        set slot loop-value of {_gui} to {@cover}
+    set {los.%{_p}%.scratched} to 0
+    set {los.%{_p}%.tier} to {_tier}
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA STÍRÁNÍ ---
+on inventory click:
+    if name of event-inventory contains "Stírací Los":
+        cancel event
+        if name of event-item is "&7&lStírací pole":
+            
+            set {_s} to index of clicked slot
+            set {_idx} to 0
+            set {_slots::*} to 3, 4, 5, 12, 13, 14, 21, 22 and 23
+            loop {_slots::*}:
+                add 1 to {_idx}
+                if loop-value is {_s}:
+                    set {_myIdx} to {_idx}
+            
+            set {_val} to {los.%player%.val::%{_myIdx}%}
+            
+            if {_val} is 1:
+                set slot {_s} of event-inventory to coal named "&8Uhlí"
+            else if {_val} is 2:
+                set slot {_s} of event-inventory to iron ingot named "&fŽelezo"
+            else if {_val} is 3:
+                set slot {_s} of event-inventory to gold ingot named "&eZlato"
+            else if {_val} is 4:
+                set slot {_s} of event-inventory to diamond named "&bDiamant"
+            else if {_val} is 5:
+                set slot {_s} of event-inventory to emerald named "&aSmaragd"
+            else if {_val} is 6:
+                set slot {_s} of event-inventory to netherite ingot named "&dNetherite"
+            else:
+                set {_randVetes} to random integer between 1 and 3
+                if {_randVetes} is 1:
+                    set slot {_s} of event-inventory to rotten flesh named "&8Zkažené maso"
+                else if {_randVetes} is 2:
+                    set slot {_s} of event-inventory to poisonous potato named "&2Nahnilá brambora"
+                else:
+                    set slot {_s} of event-inventory to stick named "&7Zlomený klacek"
+            
+            play sound "block.grindstone.use" with volume 0.5 and pitch 2 at player
+            add 1 to {los.%player%.scratched}
+            if {los.%player%.scratched} is 9:
+                wait 15 ticks
+                checkLosWin(player)
+
+# --- 5. KONTROLA VÝHRY ---
+function checkLosWin(p: player):
+    loop 9 times:
+        add 1 to {_count::%{los.%{_p}%.val::%loop-number%}%}
+    
+    set {_win} to 0
+    loop {_count::*}:
+        set {_symbolID} to loop-index parsed as number
+        if {_symbolID} <= 6:
+            if loop-value >= 3:
+                set {_win} to {_symbolID}
+            
+    if {_win} > 0:
+        set {_reward} to 0
+        set {_t} to {los.%{_p}%.tier}
+        
+        if {_t} is 1:
+            if {_win} is 1:
+                set {_reward} to 500
+            else if {_win} is 2:
+                set {_reward} to 1000
+            else if {_win} is 3:
+                set {_reward} to 1500
+            else if {_win} is 4:
+                set {_reward} to 2000
+            else:
+                set {_reward} to 2500
+        else if {_t} is 2:
+            if {_win} is 1:
+                set {_reward} to 2000
+            else if {_win} is 2:
+                set {_reward} to 3000
+            else if {_win} is 3:
+                set {_reward} to 4000
+            else if {_win} is 4:
+                set {_reward} to 5000
+            else if {_win} is 5:
+                set {_reward} to 7500
+            else:
+                set {_reward} to 10000
+        else:
+            if {_win} is 1:
+                set {_reward} to 5000
+            else if {_win} is 2:
+                set {_reward} to 7500
+            else if {_win} is 3:
+                set {_reward} to 10000
+            else if {_win} is 4:
+                set {_reward} to 20000
+            else if {_win} is 5:
+                set {_reward} to 30000
+            else if {_win} is 6:
+                set {_reward} to 60000
+                
+        execute console command "eco give %{_p}% %{_reward}%"
+        send "{@prefix} &a&lVÝHRA! &fNašel jsi 3x stejný symbol! Získáváš &e%{_reward}%$&f." to {_p}
+        play sound "entity.player.levelup" with volume 1 at {_p}
+    else:
+        send "{@prefix} &7Tento los bohužel nevyhrál. Zkus to příště!" to {_p}
+        play sound "block.chest.locked" with volume 0.8 at {_p}
+    
+    delete {los.%{_p}%.val::*}
+    delete {los.%{_p}%.scratched}
+    delete {los.%{_p}%.tier}
+    close inventory of {_p}
+
+on quit:
+    delete {los.%player%.val::*}
+    delete {los.%player%.scratched}
+    delete {los.%player%.tier}

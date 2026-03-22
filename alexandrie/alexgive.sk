@@ -1,0 +1,118 @@
+# =================================================================
+# ADMIN GIVE SKRIPT - ALEXANDRIE (UPDATE: LOM PRODUKTY)
+# =================================================================
+
+options:
+    alex_pickaxe: &eAlexandrijský krumpáč
+    dirty_gem: &8Znečištěný drahokam
+    hops_name: &2Čerstvý chmel
+    shears_name: &6Nůžky na chmel
+    shov_name: &6Lopata na říční bahno
+    raw_clay: &8Mokrá říční hlína
+    clay_mix: &7Hliněná směs
+    raw_leather: &cSurová kůže
+    wet_leather: &fMokrá kůže
+    final_leather: &6Vydělaná kůže
+    herb_red: &cDivoký mák
+    herb_blue: &bModrá orchidej
+    herb_yellow: &ePouštní pampeliška
+    crushed_herb: &aDrcená bylinná směs
+    dynamite: &cNestabilní dynamit
+    blueprints: &bPlány pyramidy
+    pharaoh_eye: &5Faraonovo oko
+    beer_low: &6Alexandrijský Ležák (10°)
+    beer_high: &6Alexandrijský Speciál (12°)
+    lotus_raw: &5Květ Purpurového Lotosu
+    drug_name: &d&lEsence z Purpurového Lotosu
+
+# --- POMOCNÁ FUNKCE PRO PIVO ---
+function giveAlexBeer(p: player, q: integer):
+    set {_item} to potion named ""
+    if {_q} is 1:
+        set name of {_item} to "{@beer_low}"
+        apply potion contents to {_item}:
+            custom_color: rgb(255, 210, 50)
+    else:
+        set name of {_item} to "{@beer_high}"
+        apply potion contents to {_item}:
+            custom_color: rgb(218, 165, 32)
+    give {_item} to {_p}
+
+command /alexgive <text>:
+    permission: rp.admin
+    permission message: &cNa tohle nemáš práva!
+    usage: /alexgive <nastroje/suroviny/produkty/lom/heist/droga>
+    trigger:
+        
+        # --- 1. NÁSTROJE ---
+        if arg-1 is "nastroje":
+            give iron pickaxe named "{@alex_pickaxe}" with lore "&7Speciální krumpáč na pískovec." to player
+            give shears named "{@shears_name}" with lore "&7Nůžky na chmel." to player
+            give iron shovel named "{@shov_name}" with lore "&7Lopata na říční bahno." to player
+            send "&e[Alexandrie] &fObdržel jsi pracovní nástroje." to player
+
+        # --- 2. ZÁKLADNÍ SUROVINY ---
+        else if arg-1 is "suroviny":
+            give 16 of flint named "{@dirty_gem}" to player 
+            give 16 of slime ball named "{@hops_name}" to player 
+            give 16 of clay ball named "{@raw_clay}" to player 
+            give 16 of leather named "{@raw_leather}" to player 
+            give 16 of poppy named "{@herb_red}" to player 
+            give 16 of blue orchid named "{@herb_blue}" to player
+            give 16 of dandelion named "{@herb_yellow}" to player
+            send "&e[Alexandrie] &fObdržel jsi balíček surových materiálů." to player
+
+        # --- 3. VZÁCNÉ NÁLEZY Z LOMU (NOVÉ) ---
+        else if arg-1 is "lom":
+            give 1 of emerald named "&aSmaragd" to player
+            give 1 of diamond named "&bDiamant" to player
+            give 1 of raw gold named "&r&eZlatá ruda" to player
+            give 1 of iron nugget named "&r&7Ledek" to player
+            give 1 of sand named "&7Jenom písek..." to player
+            send "&e[Alexandrie] &fObdržel jsi vzácné nálezy z lomu." to player
+
+        # --- 4. PRODUKTY (Zpracované) ---
+        else if arg-1 is "produkty":
+            giveAlexBeer(player, 1)
+            giveAlexBeer(player, 2)
+            give 8 of leather named "{@wet_leather}" to player
+            give 8 of leather named "{@final_leather}" to player
+            give 8 of clay ball named "{@clay_mix}" to player
+            give 16 of sugar named "{@crushed_herb}" with lore "&7Základní esence pro výrobu lektvarů." to player
+            send "&e[Alexandrie] &fObdržel jsi balíček hotových produktů." to player
+
+        # --- 5. HEIST ---
+        else if arg-1 is "heist":
+            give 1 of paper named "{@blueprints}"  with lore "&7Nákresy tajných chodeb v pyramidě." to player
+            give 1 of tnt named "{@dynamite}" with lore "&4POZOR: Vysoce výbušné!" to player
+            give 1 of ender eye named "{@pharaoh_eye}" with lore "&5Vzácný artefakt." to player
+            give soul torch named "&bPochodeň proti kletbě" with lore "&bOchranný předmět proti kletbě." to player
+            send "&e[Alexandrie] &fObdržel jsi věci k loupeži." to player
+
+        else if arg-1 is "droga":
+            set {_i} to allium named "{@lotus_raw}" with lore "&7Vzácná rostlina z oázy." and "&7Lze extrahovat v silném alkoholu."
+            give {_i} to player
+            set {_drug} to purple dye named "{@drug_name}" 
+            set lore of {_drug} to "&7Silně návyková látka z Alexandrie."
+            # Přidáme speciální NBT tag, aby skript poznal, že jde o drogu i po přejmenování (vyžaduje SkBee)
+            # set tag "custom;drug" of nbt of {_drug} to 1 
+                    
+            give {_drug} to player
+
+        else:
+            send "&e[Alexandrie] &cŠpatný výběr! Použij: nastroje, suroviny, lom, produkty, heist" to player
+
+# --- RESET PROGRESU ---
+command /alexresetall:
+    permission: rp.admin
+    trigger:
+        delete {pottery.kneading::%player%}
+        delete {pottery.digging::%player%}
+        delete {pottery.firing::%player%}
+        delete {koz.drying::%player%}
+        delete {mining.%player%}
+        delete {heist.looting::%player%}
+        delete {heist.collapsing::%player%}
+        delete {wine_process::%player%}
+        delete {honey_process::%player%}
+        send "&a[Alexandrie] Všechny tvé progress-bary byly vymazány." to player

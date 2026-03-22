@@ -1,0 +1,16 @@
+command /discord:
+    aliases: /disc, /dis
+    description: Zobrazí odkaz na náš Discord server.
+    trigger:
+        send "" to player
+        send "&9&m--------------------------------------------" to player
+        send "          &9&lDISCORD SERVER" to player
+        send "" to player
+        send "  &fPřipoj se k naší komunitě a získej" to player
+        send "  &fnovinky ze světa &6Ancient RP&f!" to player
+        send "" to player
+        send formatted "  <tooltip:&7Klikni pro otevření v prohlížeči><url:https://discord.gg/KVDAZGwzDm>&b&nhttps://discord.gg/KVDAZGwzDm" to player
+        send "" to player
+        send "&9&m--------------------------------------------" to player
+        # Volitelný zvuk pro hráče
+        play sound "entity.experience_orb.pickup" with volume 0.5 and pitch 1 at player

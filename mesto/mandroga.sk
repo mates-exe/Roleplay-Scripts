@@ -1,0 +1,202 @@
+# =================================================================
+# SYSTÉM MANDRAGORY (Ancient RP - 1.21.1 FINAL FIX)
+# =================================================================
+
+# --- 1. NASTAVENÍ OBLASTI ---
+command /setmandroga <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mandroga.pos1} to location of player
+            send "&4[Rituál] &aPrvní roh pěstírny mandragory nastaven." to player
+        else if arg-1 is "2":
+            set {mandroga.pos2} to location of player
+            send "&4[Rituál] &aDruhý roh pěstírny mandragory nastaven." to player
+
+# --- 2. SKLIZEŇ (Vřískající kořen) ---
+on right click on beetroots:
+    if {mandroga.pos1} is not set:
+        stop
+    if location of event-block is within {mandroga.pos1} and {mandroga.pos2}:
+        
+        if player has permission "rp.straz":
+            send "&c&lZÁKON: &7Jako strážce nesmíš manipulovat s těmito rostlinami!" to player
+            stop
+            
+        if name of player's tool contains "Motyčka na obilí":
+            if age of event-block is 3:
+                cancel event
+                set age of event-block to 0
+                
+                damage player's tool by 1
+                if player's tool is air:
+                    play sound "entity.item.break" at player
+                
+                play sound "entity.ghast.scream" with volume 1 and pitch 1.5 at event-block
+                send action bar "&4&lMANDRAGORA KŘIČÍ!" to player
+                apply nausea 1 to player for 5 seconds
+                
+                set {_i} to 1 of beetroot
+                set name of {_i} to "&r&cKořen mandragory"
+                set lore of {_i} to "&r&7Surový kořen mandragory." and "&r&7Po zpracování lze využít pro" and "&r&7účely rituálu."
+                add nbt compound from "{""minecraft:food"":{nutrition:1,saturation:1,can_always_eat:true,effects:[{effect:{id:""minecraft:wither"",duration:100},probability:1.0},{effect:{id:""minecraft:nausea"",duration:200},probability:1.0}]}}" to nbt of {_i}
+                
+                give {_i} to player
+            else:
+                cancel event
+                send action bar "&7Kořen je ještě příliš malý..." to player
+
+# --- 3. RITUÁLNÍ KOTEL ---
+on right click on brewing stand:
+    if {mandroga.pos1} is not set:
+        stop
+    if location of event-block is within {mandroga.pos1} and {mandroga.pos2}:
+        cancel event
+        
+        if player has permission "rp.straz":
+            send "&c&lZÁKON: &7Účast na temných rituálech je strážím zakázána!" to player
+            stop
+
+        set {_gui} to chest inventory with 3 rows named "Rituální kotel"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+            
+        set slot 10 of {_gui} to 1 of beetroot named "&r&cIngredience: Kořen mandragory" with lore "&r&7Měj v inventáři pro rituál."
+        set slot 12 of {_gui} to 1 of redstone named "&r&4Ingredience: Krvavá sůl" with lore "&r&7Měj v inventáři pro rituál."
+        
+        set slot 13 of {_gui} to nether star named "&r&d&lSPOUSTIT RITUÁL" with lore "&r&7Zpracuje max. 3 esence najednou."
+        
+        set slot 11 and 14 and 15 of {_gui} to gray stained glass pane named "&8Příprava..."
+        set slot 16 of {_gui} to cauldron named "&5Výstupní nádoba"
+        
+        open {_gui} to player
+
+# --- 4. LOGIKA RITUÁLU (S Timerem) ---
+on inventory click:
+    if name of event-inventory is "Rituální kotel":
+        cancel event
+        
+        if index of clicked slot is 13:
+            
+            # --- 4.1 KONTROLA TIMERU ---
+            if {ritual.processing.%player%} is set:
+                send "&cMusíš počkat, než se rituál dokončí!" to player
+                play sound "block.note_block.bass" at player
+                stop
+            
+            # --- 4.2 KONTROLA INGREDIENCÍ ---
+            set {_rootCount} to 0
+            set {_saltCount} to 0
+            
+            loop all items in player's inventory:
+                if loop-item is beetroot:
+                    if uncolored name of loop-item contains "Kořen mandragory":
+                        add item amount of loop-item to {_rootCount}
+                if loop-item is redstone:
+                    if uncolored name of loop-item contains "Krvavá sůl":
+                        add item amount of loop-item to {_saltCount}
+
+            set {_craftAmount} to {_rootCount}
+            if {_saltCount} < {_rootCount}:
+                set {_craftAmount} to {_saltCount}
+            
+            if {_craftAmount} > 3:
+                set {_craftAmount} to 3
+            
+            # --- 4.3 SPUŠTĚNÍ PROCESU ---
+            if {_craftAmount} > 0:
+                
+                # ZAMKNUTÍ
+                set {ritual.processing.%player%} to true
+                
+                # ODEBRÁNÍ ITEMŮ
+                set {_toRemoveRoot} to {_craftAmount}
+                set {_toRemoveSalt} to {_craftAmount}
+                loop all items in player's inventory:
+                    if {_toRemoveRoot} > 0:
+                        if loop-item is beetroot:
+                            if uncolored name of loop-item contains "Kořen mandragory":
+                                if item amount of loop-item <= {_toRemoveRoot}:
+                                    remove item amount of loop-item from {_toRemoveRoot}
+                                    set loop-item to air
+                                else:
+                                    remove {_toRemoveRoot} from item amount of loop-item
+                                    set {_toRemoveRoot} to 0
+                    if {_toRemoveSalt} > 0:
+                        if loop-item is redstone:
+                            if uncolored name of loop-item contains "Krvavá sůl":
+                                if item amount of loop-item <= {_toRemoveSalt}:
+                                    remove item amount of loop-item from {_toRemoveSalt}
+                                    set loop-item to air
+                                else:
+                                    remove {_toRemoveSalt} from item amount of loop-item
+                                    set {_toRemoveSalt} to 0
+                
+                # --- ANIMACE ---
+                set slot 13 of event-inventory to crying obsidian named "&r&5&lRituál probíhá..."
+                play sound "block.portal.ambient" with volume 0.8 to player
+                wait 10 ticks
+                
+                # Používáme 'current inventory of player' pro jistotu po waitu
+                if name of current inventory of player is "Rituální kotel":
+                    set slot 11 of current inventory of player to purple stained glass pane named "&d* Drcení *"
+                play sound "block.brewing_stand.brew" with volume 0.5 to player
+                wait 10 ticks
+                
+                if name of current inventory of player is "Rituální kotel":
+                    set slot 14 of current inventory of player to purple stained glass pane named "&d** Extrahuje se **"
+                play sound "entity.ghast.warn" with volume 0.2 at player
+                wait 10 ticks
+                
+                if name of current inventory of player is "Rituální kotel":
+                    set slot 15 of current inventory of player to purple stained glass pane named "&d*** Krystalizace ***"
+                play sound "block.enchantment_table.use" with volume 0.5 to player
+                wait 10 ticks
+                
+                # DOKONČENÍ
+                play sound "entity.lightning_bolt.impact" with volume 0.4 to player
+                
+                # --- OPRAVA: RESET TLAČÍTKA NA NETHER STAR ---
+                if name of current inventory of player is "Rituální kotel":
+                    set slot 11 and 14 and 15 of current inventory of player to gray stained glass pane named "&8Příprava..."
+                    set slot 13 of current inventory of player to nether star named "&r&d&lSPOUSTIT RITUÁL" with lore "&r&7Zpracuje max. 3 esence najednou."
+                
+                # --- GIVE VÝSLEDEK ---
+                #set {_res} to {_craftAmount} of nether wart
+                #set name of {_res} to "&r&4Esence šílenství"
+                #set lore of {_res} to "&r&7Zpracovaný kořen mandragory." and "&r&7Silná halucinogenní droga používaná" and "&r&7při rituálech."
+                #add nbt compound from "{""minecraft:food"":{nutrition:1,saturation:1,can_always_eat:true,effects:[{effect:{id:""minecraft:levitation"",duration:25},probability:1.0},{effect:{id:""minecraft:nausea"",duration:300},probability:1.0},{effect:{id:""minecraft:darkness"",duration:100},probability:1.0}]}}" to nbt of {_res}
+                #
+                #give {_res} to player
+                #send action bar "&4&lRITUÁL DOKONČEN! Vyrobeno %{_craftAmount}%ks esencí." to player
+                
+                # --- GIVE VÝSLEDEK (VIP BONUS) ---
+                set {_mult} to 1
+                if player has permission "rp.vip":
+                    set {_mult} to 2
+                
+                set {_finalAmount} to {_craftAmount} * {_mult}
+                
+                set {_res} to {_finalAmount} of nether wart
+                set name of {_res} to "&r&4Esence šílenství"
+                set lore of {_res} to "&r&7Zpracovaný kořen mandragory." and "&r&7Silná halucinogenní droga používaná" and "&r&7při rituálech."
+                add nbt compound from "{""minecraft:food"":{nutrition:1,saturation:1,can_always_eat:true,effects:[{effect:{id:""minecraft:levitation"",duration:25},probability:1.0},{effect:{id:""minecraft:nausea"",duration:300},probability:1.0},{effect:{id:""minecraft:darkness"",duration:100},probability:1.0}]}}" to nbt of {_res}
+                
+                give {_res} to player
+                
+                if {_mult} is 2:
+                    send action bar "&6VIP &4&lRITUÁL DOKONČEN! &fVyrobeno &l%{_finalAmount}%&f esencí." to player
+                else:
+                    send action bar "&4&lRITUÁL DOKONČEN! Vyrobeno %{_finalAmount}%ks esencí." to player
+                
+
+                # ODEMKNUTÍ
+                delete {ritual.processing.%player%}
+                
+            else:
+                send "&cChybí ti ingredience! (Kořen + Sůl)" to player
+                play sound "block.chest.locked" with volume 0.5 to player
+
+# --- 5. OŠETŘENÍ ODPOJENÍ ---
+on quit:
+    delete {ritual.processing.%player%}

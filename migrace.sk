@@ -1,0 +1,85 @@
+command /invseeuuid <text>:
+    permission: admin.invsee
+    trigger:
+        set {_path} to "world/playerdata/%arg-1%.dat"
+        set {_nbt} to nbt compound from file {_path}
+        
+        if {_nbt} is set:
+            set {_gui} to chest inventory with 6 rows named "UUID: %arg-1%"
+            set {_items::*} to compound list tag "Inventory" of {_nbt}
+            
+            # Reset počítadla pro jistotu
+            set {_index} to 0
+            
+            loop {_items::*}:
+                # Načtení itemu v 1.21 formátu
+                set {_item} to item from nbt loop-value
+                
+                if {_item} is set:
+                    # Jednoduše dáme item do dalšího volného slotu v GUI
+                    set slot {_index} of {_gui} to {_item}
+                    add 1 to {_index}
+            
+            open {_gui} to player
+            send "§a[OK] Zobrazeno %{_index}% položek z nalezených 9."
+        else:
+            send "§c[!] Soubor nebyl nalezen!"
+
+command /enderseeuuid <text>:
+    permission: admin.invsee
+    trigger:
+        set {_path} to "world/playerdata/%arg-1%.dat"
+        set {_nbt} to nbt compound from file {_path}
+        
+        if {_nbt} is set:
+            set {_gui} to chest inventory with 6 rows named "ENDER: %arg-1%"
+            
+            set {_ender::*} to compound list tag "EnderItems" of {_nbt}
+            set {_slot} to 0
+            loop {_ender::*}:
+                set {_item} to item from nbt loop-value
+                if {_item} is set:
+                    set slot {_slot} of {_gui} to {_item}
+                    add 1 to {_slot}
+            
+            open {_gui} to player
+            send "§d[OK] Ender truhla načtena ze souboru."
+        else:
+            send "§c[!] Soubor nebyl nalezen!"
+
+command /checkold <text>:
+    permission: admin.check
+    trigger:
+        set {_u} to arg-1
+        # Cesta k datům světa a Essentials
+        set {_datPath} to "world/playerdata/%{_u}%.dat"
+        set {_essPath} to "plugins/Essentials/userdata/%{_u}%.yml"
+        
+        set {_nbt} to nbt compound from file {_datPath}
+        
+        if {_nbt} is set:
+            set {_gui} to chest inventory with 6 rows named "Záloha: %{_u}%"
+            
+            # --- 1. INVENTÁŘ (Vysypeme nahoru) ---
+            set {_items::*} to compound list tag "Inventory" of {_nbt}
+            set {_index} to 0
+            loop {_items::*}:
+                set {_item} to item from nbt loop-value
+                if {_item} is set:
+                    set slot {_index} of {_gui} to {_item}
+                    add 1 to {_index}
+            
+            # --- 2. ENDER TRUHLA (Vysypeme od slotu 27) ---
+            set {_ender::*} to compound list tag "EnderItems" of {_nbt}
+            set {_eIndex} to 27
+            loop {_ender::*}:
+                set {_item} to item from nbt loop-value
+                if {_item} is set:
+                    set slot {_eIndex} of {_gui} to {_item}
+                    add 1 to {_eIndex}
+
+
+            open {_gui} to player
+            send "§a[OK] Data pro %{_u}% načtena do přehledu."
+        else:
+            send "§c[!] Soubor playerdata/%{_u}%.dat nebyl nalezen!"

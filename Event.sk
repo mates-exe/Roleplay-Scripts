@@ -1,0 +1,382 @@
+# =================================================================
+# EVENT SYSTEM v10.0 - JOIN/LEAVE & ADVANCED ADMIN PANEL
+# =================================================================
+
+options:
+    world: "event_world"
+    prefix: &8[&6Event&8] &r
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /eventset <text> [<text>]:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "lobby":
+            set {event.loc.lobby} to location of player
+            send "{@prefix} &aLobby nastaveno."
+        else if arg-1 is "spawn":
+            set {event.loc.spawn} to location of player
+            send "{@prefix} &aFFA Záložní spawn nastaven."
+        else if arg-1 is "redspawn":
+            set {event.loc.red} to location of player
+            send "{@prefix} &cČervený tým spawn nastaven."
+        else if arg-1 is "bluespawn":
+            set {event.loc.blue} to location of player
+            send "{@prefix} &bModrý tým spawn nastaven."
+        else if arg-1 is "arena1":
+            set {event.arena.1} to location of player
+            send "{@prefix} &dPrvní roh arény nastaven."
+        else if arg-1 is "arena2":
+            set {event.arena.2} to location of player
+            send "{@prefix} &dDruhý roh arény nastaven."
+        else if arg-1 is "mode":
+            if arg-2 is "FFA" or "TEAMS":
+                set {event.mode} to arg-2
+                send "{@prefix} &fMód změněn na: &6%arg-2%"
+            else:
+                send "{@prefix} &cPoužij: /eventset mode <FFA/TEAMS>"
+        else if arg-1 is "joinlock":
+            if arg-2 is "on":
+                set {event.join_locked} to true
+                send "{@prefix} &c&lPřipojování do ARÉNY (Kity) uzamčeno."
+            else:
+                set {event.join_locked} to false
+                send "{@prefix} &a&lPřipojování do ARÉNY (Kity) otevřeno."
+        else if arg-1 is "status":
+            if arg-2 is "open":
+                set {event.status} to "OPEN"
+                send "{@prefix} &aEvent je nyní OTEVŘEN pro vstup přes /event join."
+            else:
+                set {event.status} to "CLOSED"
+                send "{@prefix} &cEvent je nyní ZAVŘEN."
+        else if arg-1 is "resetall":
+            delete {event.players::*}
+            delete {event.red::*}
+            delete {event.blue::*}
+            delete {event.kills::*}
+            send "{@prefix} &eData hry byla kompletně vymazána."
+        else:
+            send "&e/eventset <lobby|spawn|redspawn|bluespawn|arena1|arena2|mode|joinlock|status|resetall>"
+# --- 2. PŘÍKAZ /EVENTSTATS (Leaderboard & Info) ---
+command /eventstats:
+    aliases: /stats, /estats
+    trigger:
+        send "" to player
+        send "&7&m----------------&8 [ &6Event Statistiky &8] &7&m----------------" to player
+        
+        # Mód a Stav
+        set {_m} to {event.mode} if {event.mode} is set else "Nenastaveno"
+        set {_s} to "&aOTEVŘENO" if {event.status} is "OPEN" else "&cZAVŘENO"
+        send "&eMód: &f%{_m}% &8| &eStatus vstupu: %{_s}%" to player
+        
+        # LMS Zámek
+        set {_l} to "&cUZAMČENO (LMS)" if {event.join_locked} is true else "&aVOLNÉ"
+        send "&eVýběr kitů: %{_l}%" to player
+        
+        # Počty hráčů
+        set {_total} to size of {event.all_joined::*}
+        set {_active} to size of {event.players::*}
+        send "&eHráči v lobby: &f%{_total}% &8| &eHráči v boji: &f%{_active}%" to player
+        
+        if {event.mode} is "TEAMS":
+            send "  &cČervení: &f%size of {event.red::*}% &8| &bModří: &f%size of {event.blue::*}%" to player
+        
+        send "" to player
+        send "&6&lTOP 5 ZABIJÁKŮ:" to player
+        
+        # Logika leaderboardu (převod UUID na jména)
+        set {_count} to 0
+        loop {event.kills::*}:
+            set {_v} to loop-value
+            set {_list::%{_v}%::%loop-index%} to loop-index
+            
+        set {_sorted::*} to reversed sorted indices of {_list::*}
+        
+        loop {_sorted::*}:
+            set {_score} to loop-value
+            loop {_list::%{_score}%::*}:
+                add 1 to {_count}
+                if {_count} <= 5:
+                    set {_p} to loop-value-2 parsed as offline player
+                    send "&7%{_count}%. &e%{_p}% &8- &6%{_score}% killů" to player
+        
+        if {_count} is 0:
+            send "&8(Zatím nikdo nikoho nezabil)" to player
+            
+        send "&7&m---------------------------------------------------" to player
+# --- 2. PŘÍKAZY PRO HRÁČE (/EVENT JOIN/LEAVE) ---
+command /event [<text>]:
+    trigger:
+        # --- JOIN LOGIKA ---
+        if arg-1 is "join":
+            if {event.status} is not "OPEN":
+                send "{@prefix} &cEvent není momentálně otevřen pro připojování."
+                stop
+            if {event.all_joined::*} contains player:
+                send "{@prefix} &cJiž jsi připojen v event světě!"
+                stop
+            if {event.loc.lobby} is not set:
+                send "{@prefix} &cAdmin ještě nenastavil lobby!"
+                stop
+            
+            # Uložení původní pozice
+            set {event.origin::%player%} to location of player
+            add player to {event.all_joined::*}
+            
+            teleport player to {event.loc.lobby}
+            send "{@prefix} &aByl jsi portnut do lobby eventu. Vyber si kit u NPC!"
+            stop
+
+        # --- LEAVE LOGIKA ---
+        if arg-1 is "leave":
+            if {event.all_joined::*} does not contain player:
+                send "{@prefix} &cNejsi v eventu!"
+                stop
+            
+            playerLeaveEvent(player)
+            send "{@prefix} &eOpustil jsi event a byl jsi portnut zpět."
+            stop
+
+        # --- VÝBĚR KITU (Původní logika) ---
+        if world of player is not {@world}:
+            send "{@prefix} &cTento příkaz (výběr kitu) funguje pouze v event světě! Použij /event join."
+            stop
+            
+        if {event.players::*} contains player:
+            send "{@prefix} &cJiž jsi v aréně! Nemůžeš si vzít nový kit."
+            stop
+            
+        if {event.join_locked} is true:
+            send "{@prefix} &c&lPřipojování do arény je uzamčeno (LMS)!"
+            stop
+            
+        openKitGUI(player)
+
+
+
+# --- 4. ADMIN PANEL (ROZŠÍŘENÝ) ---
+command /eventadmin:
+    aliases: /ea, /emenu
+    permission: rp.admin
+    trigger:
+        openEventAdmin(player)
+
+function openEventAdmin(p: player):
+    set {_gui} to chest inventory with 5 rows named "&8[&6Event Control Panel&8]"
+    loop 45 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+
+    # --- 1. ŘADA: STAV A MÓD ---
+    if {event.status} is "OPEN":
+        set slot 10 of {_gui} to lime concrete named "&a&lSTAV: OTEVŘENO" with lore "&7Hráči mohou používat /event join." and "" and "&6Klikni pro ZAVŘENÍ"
+    else:
+        set slot 10 of {_gui} to red concrete named "&c&lSTAV: ZAVŘENO" with lore "&7Vstup do eventu je blokován." and "" and "&6Klikni pro OTEVŘENÍ"
+
+    if {event.mode} is "TEAMS":
+        set slot 12 of {_gui} to blue wool named "&eMód: &b&lTÝMY" with lore "&6Klikni pro FFA"
+    else:
+        set slot 12 of {_gui} to lime wool named "&eMód: &a&lFFA" with lore "&6Klikni pro TÝMY"
+
+    if {event.join_locked} is true:
+        set slot 14 of {_gui} to redstone torch named "&ePřipojení do arény: &c&lZAMČENO" with lore "&6Klikni pro ODEMČENÍ"
+    else:
+        set slot 14 of {_gui} to lever named "&ePřipojení do arény: &a&lOTEVŘENO" with lore "&6Klikni pro ZAMČENÍ (LMS)"
+
+    set slot 16 of {_gui} to book named "&6Statistiky" with lore "&7Vypíše stav do chatu."
+
+    # --- 2. ŘADA: HROMADNÉ AKCE ---
+    set slot 20 of {_gui} to piston named "&e&lKOPNOUT VŠECHNY DO LOBBY" with lore "&7Portne všechny hráče z arény" and "&7zpět do lobby a vymaže kity."
+    set slot 22 of {_gui} to iron door named "&4&lUKONČIT EVENT (DOMŮ)" with lore "&7Vyhodí úplně všechny ze světa" and "&7zpět na jejich původní pozice."
+    set slot 24 of {_gui} to tnt named "&4&lRESET DAT" with lore "&7Vymaže killy a seznamy."
+
+    # --- 3. ŘADA: LOKACE ---
+    set slot 30 of {_gui} to beacon named "&fNastavit &e&lLOBBY"
+    set slot 31 of {_gui} to map named "&fNastavit &a&lFFA SPAWN"
+    set slot 32 of {_gui} to red wool named "&fNastavit &c&lRED SPAWN"
+    set slot 33 of {_gui} to blue wool named "&fNastavit &b&lBLUE SPAWN"
+    
+    open {_gui} to {_p}
+
+# --- 5. LOGIKA ADMIN PANELU ---
+on inventory click:
+    if name of event-inventory is "&8[&6Event Control Panel&8]":
+        cancel event
+        set {_p} to player
+        
+        # Přepínače
+        if index of clicked slot is 10:
+            if {event.status} is "OPEN":
+                execute player command "eventset status close"
+            else:
+                execute player command "eventset status open"
+            openEventAdmin({_p})
+
+        if index of clicked slot is 12:
+            if {event.mode} is "TEAMS":
+                execute player command "eventset mode FFA"
+            else:
+                execute player command "eventset mode TEAMS"
+            openEventAdmin({_p})
+
+        if index of clicked slot is 14:
+            if {event.join_locked} is true:
+                execute player command "eventset joinlock off"
+            else:
+                execute player command "eventset joinlock on"
+            openEventAdmin({_p})
+
+        # Hromadné akce
+        if index of clicked slot is 20: # Do lobby
+            loop {event.players::*}:
+                clear loop-value's inventory
+                teleport loop-value to {event.loc.lobby}
+                send "{@prefix} &eKolo skončilo, byl jsi přesunut do lobby." to loop-value
+            delete {event.players::*}
+            delete {event.red::*}
+            delete {event.blue::*}
+            send "{@prefix} &aVšichni hráči byli přesunuti do lobby." to {_p}
+
+        if index of clicked slot is 22: # Domů
+            loop {event.all_joined::*}:
+                playerLeaveEvent(loop-value)
+            send "{@prefix} &cEvent byl ukončen a všichni portnuti domů." to {_p}
+            close {_p}'s inventory
+
+        if index of clicked slot is 24: # Reset dat
+            execute player command "eventset resetall"
+            close {_p}'s inventory
+
+        # Zbytek (Statistiky a lokace)
+        if index of clicked slot is 16:
+            execute player command "eventstats"
+        if index of clicked slot is 30:
+            execute player command "eventset lobby"
+        if index of clicked slot is 31:
+            execute player command "eventset spawn"
+        if index of clicked slot is 32:
+            execute player command "eventset redspawn"
+        if index of clicked slot is 33:
+            execute player command "eventset bluespawn"
+
+# --- ZBYTEK (GUI, TÝMY, SMRT, OCHRANY) ---
+function openKitGUI(p: player):
+    set {_gui} to chest inventory with 3 rows named "Vyber si svůj KIT"
+    loop 27 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+    set slot 10 of {_gui} to iron horse armor named "&a&lASSAULT" with lore "&7Zbraň: &fAK-47"
+    set slot 11 of {_gui} to netherite chestplate named "&8&lHEAVY" with lore "&7Zbraň: &fShotgun"
+    set slot 13 of {_gui} to bow named "&7&lSNIPER" with lore "&7Zbraň: &fHunting"
+    set slot 15 of {_gui} to tnt named "&6&lDEMOLITION" with lore "&7Zbraň: &fBazooka"
+    set slot 16 of {_gui} to iron axe named "&f&lRUSHER" with lore "&7Zbraň: &fCarbine"
+    open {_gui} to {_p}
+
+on inventory click:
+    if name of event-inventory is "Vyber si svůj KIT":
+        cancel event
+        if clicked slot is 10, 11, 13, 15 or 16:
+            clear player's inventory
+            
+            set {_targetLoc} to {event.loc.spawn}
+            if {event.mode} is "TEAMS":
+                if size of {event.red::*} <= size of {event.blue::*}:
+                    add player to {event.red::*}
+                    set {event.team::%player%} to "RED"
+                    set {_color} to red
+                    set {_targetLoc} to {event.loc.red}
+                else:
+                    add player to {event.blue::*}
+                    set {event.team::%player%} to "BLUE"
+                    set {_color} to blue
+                    set {_targetLoc} to {event.loc.blue}
+            else:
+                set {event.team::%player%} to "FFA"
+                set {_color} to lime
+                if {event.arena.1} is set:
+                    set {_targetLoc} to highest block at location(random number between x-coord of {event.arena.1} and x-coord of {event.arena.2}, 0, random number between z-coord of {event.arena.1} and z-coord of {event.arena.2}, world {@world})
+                    add 1.5 to y-coord of {_targetLoc}
+
+            add player to {event.players::*}
+            set {event.kills::%player%} to 0 if {event.kills::%player%} is not set
+
+            if index of clicked slot is 10:
+                giveKit(player, {_color}, "AK-47", "GRENADE", "FLASHBANG")
+            else if index of clicked slot is 11:
+                giveKit(player, {_color}, "SHOTGUN", "RIOTSHIELD", "TOASTER")
+            else if index of clicked slot is 13:
+                giveKit(player, {_color}, "HUNTING", "PYTHON", "FLASHBANG")
+            else if index of clicked slot is 15:
+                giveKit(player, {_color}, "BAZOOKA", "PUTTY", "GRENADE")
+            else if index of clicked slot is 16:
+                giveKit(player, {_color}, "CARBINE", "COCOPOPS", "FLASHBANG")
+                
+            teleport player to {_targetLoc}
+            close player's inventory
+
+function giveKit(p: player, c: color, w1: text, w2: text, w3: text):
+    set {_h} to leather helmet
+    set {_cp} to leather chestplate
+    set {_l} to leather leggings
+    set {_b} to leather boots
+    dye {_h} {_c}
+    dye {_cp} {_c}
+    dye {_l} {_c}
+    dye {_b} {_c}
+    set slot 39 of {_p} to {_h}
+    set slot 38 of {_p} to {_cp}
+    set slot 37 of {_p} to {_l}
+    set slot 36 of {_p} to {_b}
+    wait 1 tick
+    execute console command "shot give %{_p}% %{_w3}%"
+    wait 1 tick
+    execute console command "shot give %{_p}% %{_w1}%"
+    wait 1 tick
+    execute console command "shot give %{_p}% %{_w2}%"
+
+on death of player:
+    if world of victim is {@world}:
+        clear drops
+        set death message to ""
+        remove victim from {event.players::*}
+        remove victim from {event.red::*}
+        remove victim from {event.blue::*}
+        if attacker is a player:
+            if attacker is not victim:
+                add 1 to {event.kills::%attacker%}
+                send action bar "&6&lZÁŘEZ! &fKilly: &e%{event.kills::%attacker%}%" to attacker
+        send "{@prefix} &cZemřel jsi!" to victim
+        clear victim's inventory
+
+# --- 3. POMOCNÉ FUNKCE PRO ODCHOD (ROZŠÍŘENO) ---
+function playerLeaveEvent(p: player):
+    # Vymazání věcí a týmových dat
+    clear {_p}'s inventory
+    remove {_p} from {event.players::*}
+    remove {_p} from {event.all_joined::*}
+    remove {_p} from {event.red::*}
+    remove {_p} from {event.blue::*}
+    delete {event.team::%{_p}%}
+    
+    wait 1 tick
+    # Teleport zpět na původní pozici
+    if {event.origin::%{_p}%} is set:
+        teleport {_p} to {event.origin::%{_p}%}
+        delete {event.origin::%{_p}%}
+    else:
+        # Pokud by se proměnná ztratila, portni na globální spawn
+        execute console command "spawn %{_p}%"
+
+# --- 11. POJISTKY PRO ODPOJENÍ A PŘIPOJENÍ (RECONNECT FIX) ---
+
+on join:
+    # Pokud se hráč připojí a má uloženou pozici z eventu, portneme ho zpět
+    if {event.origin::%player%} is set:
+        wait 5 ticks # Čas pro načtení světa hráči
+        playerLeaveEvent(player)
+        send "{@prefix} &eByl jsi vrácen na původní pozici (odpojení během eventu)." to player
+
+on quit:
+    # Odstraníme ho z aktivních seznamů, aby neblokoval místo/týmy
+    remove player from {event.players::*}
+    remove player from {event.red::*}
+    remove player from {event.blue::*}
+    # Poznámka: {event.origin} a {event.all_joined} NESMAŽEME, 
+    # smaže se to až funkcí playerLeaveEvent při jeho reconnectu nebo /event leave.

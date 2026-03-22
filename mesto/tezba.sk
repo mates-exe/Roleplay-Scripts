@@ -1,0 +1,142 @@
+# =================================================================
+# SYSTÉM TĚŽBY (Doly) - VANILLA STYL (REGEN + SECURITY)
+# =================================================================
+
+options:
+    pickaxe_name: "&3Vylepšený Hornický krumpáč"
+    pickaxe_name2: "&3Hornický krumpáč"
+    salt_name: "&4Krvavá sůl"
+    regen_time: 30 seconds # Za jak dlouho se ložisko obnoví
+
+# --- FUNKCE PRO BEZPEČNÉ ITEMY (Custom Model Data) ---
+
+function getPickaxeItem() :: item:
+    set {_i} to iron pickaxe named {@pickaxe_name}
+    set lore of {_i} to "&7Speciální krumpáč pro těžbu v dolech."
+    enchant {_i} with efficiency 4
+    enchant {_i} with unbreaking 3
+    set custom model data of {_i} to 1001
+    return {_i}
+
+function getPickaxeItemBasic() :: item:
+    set {_i} to iron pickaxe named {@pickaxe_name2}
+    set lore of {_i} to "&7Základní krumpáč pro těžbu."
+    set custom model data of {_i} to 1002
+    return {_i}
+
+function getSaltItem() :: item:
+    set {_i} to redstone named {@salt_name}
+    set lore of {_i} to "&cVzácná surovina pro rituály."
+    set custom model data of {_i} to 3001
+    return {_i}
+
+# --- POMOCNÉ FUNKCE PRO LOOT ---
+
+function giveMineLoot(p: player, type: text, amount: integer):
+    if {_type} is "stone":
+        set {_i} to cobblestone named "&r&7Kámen"
+        set custom model data of {_i} to 1101
+    else if {_type} is "coal":
+        set {_i} to coal named "&r&8Černé uhlí"
+        set custom model data of {_i} to 1102
+    else if {_type} is "iron":
+        set {_i} to raw iron named "&r&7Železná ruda"
+        set custom model data of {_i} to 1103
+    else if {_type} is "gold":
+        set {_i} to raw gold named "&r&eZlatá ruda"
+        set custom model data of {_i} to 1104
+    give {_amount} of {_i} to {_p}
+
+# --- NASTAVENÍ OBLASTI ---
+command /setmine <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mine.pos1} to location of player
+            send "&2[Doly] &aPrvní roh dolů nastaven."
+        else if arg-1 is "2":
+            set {mine.pos2} to location of player
+            send "&2[Doly] &aDruhý roh dolů nastaven."
+
+# --- DÁVÁNÍ KRUMPÁČE ---
+command /dejkrumpac <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "vylepseny":
+            give player getPickaxeItem()
+        else:
+            give player getPickaxeItemBasic()
+        send "&aObdržel jsi těžební krumpáč."
+
+# --- HLAVNÍ LOGIKA TĚŽBY (ON BREAK) ---
+on break:
+    # 1. Kontrola, zda je hráč v oblasti dolů
+    if {mine.pos1} is not set:
+        stop
+    
+    if location of event-block is within {mine.pos1} and {mine.pos2}:
+        
+        # --- A) KONTROLA POVOLENÝCH BLOKŮ ---
+        if event-block is coal ore or iron ore or gold ore or redstone ore or deepslate coal ore or deepslate iron ore or deepslate gold ore or deepslate redstone ore:
+            
+            # Kontrola nástroje
+            if custom model data of player's tool is 1001 or 1002:
+                # Zrušíme skutečné zničení (prevence vypadávání vanilla dropů)
+                cancel event
+                
+                set {_loc} to location of event-block
+                set {_origType} to type of event-block
+                
+                # Okamžitá náhrada za cobblestone (vyčerpané ložisko)
+                set block at {_loc} to cobblestone
+                play sound "block.stone.break" with volume 1 at {_loc}
+                
+                # Regenerace
+                handleOreRegen({_loc}, {_origType})
+                damageTool(player)
+
+                # Výpočet dropů
+                set {_amount} to 1
+                if player's tool is enchanted with fortune:
+                    set {_lvl} to level of fortune of player's tool
+                    set {_amount} to random integer between 1 and ({_lvl} + 1)
+                
+                set {_rand} to random integer between 1 and 100
+                if {_rand} <= 50:
+                    giveMineLoot(player, "stone", 1)
+                else if {_rand} <= 75:
+                    giveMineLoot(player, "coal", {_amount})
+                else if {_rand} <= 90:
+                    giveMineLoot(player, "iron", {_amount})
+                else:
+                    giveMineLoot(player, "gold", {_amount})
+                
+                if chance of 10%:
+                    give player getSaltItem()
+                    play sound "entity.player.levelup" with volume 0.5 at player
+            
+            else:
+                # Pokud kope rudu špatným nástrojem
+                cancel event
+                send action bar "&cNa těžbu v těchto dolech potřebuješ Hornický krumpáč!" to player
+        
+        # --- B) KONTROLA VYČERPANÉHO LOŽISKA ---
+        else if event-block is cobblestone:
+            cancel event
+            send action bar "&8Ložisko je vyčerpané, počkej na obnovu..." to player
+            
+        # --- C) OCHRANA OKOLÍ (ANTI-GRIEF) ---
+        else:
+            # Pokud hráč zkusí rozbít cokoliv jiného v oblasti (stěny, dekorace, zem)
+            if player does not have permission "rp.admin":
+                cancel event
+                send action bar "&cTuto část dolu nemůžeš ničit!" to player
+
+# --- FUNKCE PRO REGENERACI ---
+function handleOreRegen(loc: location, type: item type):
+    wait {@regen_time}
+    # Pokud tam mezitím někdo nepostavil něco jiného, vrátíme rudu
+    if block at {_loc} is cobblestone:
+        set block at {_loc} to {_type}
+        # Vizuální efekt obnovy pro lidi v okolí
+        play sound "block.iron_ore.place" with volume 0.3 at {_loc}

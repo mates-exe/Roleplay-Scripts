@@ -1,0 +1,7 @@
+on right click on player:
+    # Uložíme si jméno hráče, na kterého jsi kliknul
+    set {_target} to clicked player
+    
+    # Odešle zprávu nad hotbar (Action Bar)
+    # &e = žlutá barva, &f = bílá barva
+    send action bar "&8[&6RP&8] &7Díváš se na: &e%name of {_target}%" to player

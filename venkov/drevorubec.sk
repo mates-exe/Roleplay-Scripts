@@ -1,0 +1,167 @@
+# =================================================================
+# PRÁCE: DŘEVORUBEC A UHLÍŘ - SECURE CMD v2 (FINAL FIX)
+# =================================================================
+
+options:
+    # --- NOVÉ CMD REGISTRY (Řada 6000+ Venkov) ---
+    cmd_axe: 6001
+    cmd_raw_log: 6101
+    cmd_chopped_wood: 6102
+    cmd_coal: 1102 # Shodné s kovářem pro funkční řetězec
+    
+    # Názvy
+    axe_name: "&2&lDřevorubecká sekera"
+    log_name: "&fSurová kláda"
+    chopped_name: "&7Štípané dřevo"
+    coal_name: "&8Kvalitní kovářské uhlí"
+    
+    # Nastavení
+    regen_time: 120 seconds
+
+# --- 1. MASTER SETTINGS (Venkov) ---
+command /setvenkov <text> <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "les":
+            set {venkov.les.pos%arg-2%} to location of player
+            send "&2[Venkov] &fBod lesa %arg-2% nastaven." to player
+        else if arg-1 is "stipal":
+            set {venkov.stipal.pos%arg-2%} to location of player
+            send "&2[Venkov] &fBod štípacího špalku %arg-2% nastaven." to player
+        else if arg-1 is "milir":
+            set {venkov.milir.pos%arg-2%} to location of player
+            send "&2[Venkov] &fBod milíře %arg-2% nastaven." to player
+
+# --- 2. ADMIN GIVE ---
+command /dejsekeru:
+    permission: rp.admin
+    trigger:
+        set {_i} to iron axe named {@axe_name}
+        set lore of {_i} to "&7Sekera určená pro těžbu a štípání."
+        set custom model data of {_i} to {@cmd_axe}
+        give {_i} to player
+        send "&2[Venkov] &fObdržel jsi sekeru" to player
+
+# --- 3. TĚŽBA DŘEVA ---
+on break of oak log:
+    if {venkov.les.pos1} is set:
+        if location of event-block is within {venkov.les.pos1} and {venkov.les.pos2}:
+            # Validace sekery přes CMD
+            if custom model data of player's tool is {@cmd_axe}:
+                cancel drops
+                set {_log} to oak log named {@log_name}
+                set custom model data of {_log} to {@cmd_raw_log}
+                set lore of {_log} to "&7Surové dřevo. Nutno nasekat na špalku."
+                drop 1 of {_log} at event-block
+            else:
+                cancel event
+                send action bar "&cNa toto dřevo potřebuješ Dřevorubeckou sekeru!" to player
+
+# --- 4. ŠTÍPÁNÍ NA ŠPALKU (Minihra) ---
+on right click on anvil or stonecutter:
+    if {venkov.stipal.pos1} is set:
+        if location of event-block is within {venkov.stipal.pos1} and {venkov.stipal.pos2}:
+            cancel event
+            
+            # Kontrola suroviny (CMD)
+            if custom model data of player's tool is {@cmd_raw_log}:
+                
+                # Kontrola sekery v inventáři (CMD)
+                set {_hasTool} to false
+                loop all items in player's inventory:
+                    if custom model data of loop-item is {@cmd_axe}:
+                        set {_hasTool} to true
+                        set {_toolItem} to loop-item
+                        stop loop
+                
+                if {_hasTool} is false:
+                    send "&cPotřebuješ mít v inventáři Dřevorubeckou sekeru!" to player
+                    stop
+
+                if {work.chopping::%player%} is set:
+                    stop
+                set {work.chopping::%player%} to true
+                
+                remove 1 of player's tool from player
+                
+                loop 4 times:
+                    send action bar "&7Sekání... [%loop-number%/4]" to player
+                    play sound "block.wood.break" with volume 0.7 and pitch 0.8 at event-block
+                    wait 12 ticks
+                
+                set {_res} to oak planks named {@chopped_name}
+                set custom model data of {_res} to {@cmd_chopped_wood}
+                set lore of {_res} to "&7Nasekané dřevo připravené do milíře."
+                give {_res} to player
+                
+                # Poškození sekery (Validní oprava)
+                remove 1 of {_toolItem} from player's inventory
+                damage {_toolItem} by 1
+                if damage of {_toolItem} < 250:
+                    give {_toolItem} to player
+                else:
+                    play sound "entity.item.break" at player
+                    send "&c&lTvá sekera se zlomila!" to player
+                
+                delete {work.chopping::%player%}
+
+# --- 5. UHLÍŘSTVÍ (Milíř) ---
+on right click on smoker or furnace:
+    if {venkov.milir.pos1} is set:
+        if location of event-block is within {venkov.milir.pos1} and {venkov.milir.pos2}:
+            cancel event
+            
+            # Vložení štípaného dřeva (CMD)
+            if custom model data of player's tool is {@cmd_chopped_wood}:
+                if {charcoal.burning::%location of event-block%} is set:
+                    send "&cTento milíř už hoří!" to player
+                    stop
+                
+                remove 1 of player's tool from player
+                set {charcoal.burning::%location of event-block%} to now
+                
+                play sound "item.firecharge.use" at event-block
+                send "&6[Uhlíř] &fMilíř zapálen. Uhlí bude za 10 minut." to player
+                
+                loop 20 times:
+                    if {charcoal.burning::%location of event-block%} is not set:
+                        stop
+                    show large smoke particles at location 1.2 meters above event-block
+                    wait 30 seconds
+            
+            # Vybrání uhlí
+            else if {charcoal.burning::%location of event-block%} is set:
+                set {_waited} to difference between {charcoal.burning::%location of event-block%} and now
+                if {_waited} >= 10 minutes:
+                    delete {charcoal.burning::%location of event-block%}
+                    
+                    set {_coal} to coal named {@coal_name}
+                    set custom model data of {_coal} to {@cmd_coal}
+                    set lore of {_coal} to "&7Kvalitní palivo do kovářské pece."
+                    
+                    give 2 of {_coal} to player
+                    send "&6[Uhlíř] &fVytáhl jsi z milíře Kvalitní uhlí!" to player
+                    play sound "block.fire.extinguish" at event-block
+                else:
+                    set {_rem} to 10 minutes
+                    remove {_waited} from {_rem}
+                    send "&7Uhlí se ještě pálí. Zbývá: &e%{_rem}%" to player
+            else:
+                send "&7Zde můžeš pálit Štípané dřevo {@cmd_chopped_wood} na uhlí." to player
+
+# --- 6. ZABEZPEČENÍ CRAFTINGU ---
+on inventory click:
+    if clicked slot is 0:
+        # Stabilní detekce inventáře přes text
+        set {_invType} to "%event-inventory%"
+        if {_invType} contains "crafting" or "workbench":
+            loop all items in event-inventory:
+                set {_cmd} to custom model data of loop-item
+                # Blokujeme klády (6101) a štípané dřevo (6102)
+                if {_cmd} is {@cmd_raw_log} or {@cmd_chopped_wood}:
+                    cancel event
+                    send action bar "&cTento polotovar nelze použít v běžném craftingu!" to player
+                    stop loop
+
+on quit:
+    delete {work.chopping::%player%}

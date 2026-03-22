@@ -1,0 +1,79 @@
+# =================================================================
+# SYSTÉM DROG: PURPUROVÝ LOTOS (ALEXANDRIE) - FINAL FIX
+# =================================================================
+
+options:
+    lotus_raw_item: allium
+    lotus_raw_name: &5Květ Purpurového Lotosu
+    drug_name: &d&lEsence z Purpurového Lotosu
+    beer_req: Alexandrijský Ležák (10°) # Název bez barvy pro kontrolu
+
+# --- 1. SBĚR V OÁZE ---
+on right click on allium:
+    if {lotus.sber1} is set:
+        if location of event-block is within {lotus.sber1} and {lotus.sber2}:
+            cancel event
+            set {_i} to allium named "{@lotus_raw_name}" with lore "&7Vzácná rostlina z oázy." and "&7Lze extrahovat v silném alkoholu."
+            give {_i} to player
+            set {_loc} to location of event-block
+            set block at {_loc} to air
+            send action bar "&5Utrhl jsi vzácný Purpurový Lotos." to player
+            wait 300 seconds
+            set block at {_loc} to allium
+
+# --- 2. VÝROBA (VARNA) ---
+on right click on cauldron:
+    if {lotus.lab1} is set:
+        if location of event-block is within {lotus.lab1} and {lotus.lab2}:
+            if name of player's tool is "{@lotus_raw_name}":
+                
+                # --- NOVÁ DETEKCE PIVA (SPOLEHLIVÁ) ---
+                set {_foundBeer} to false
+                loop all items in player's inventory:
+                    if uncolored name of loop-item contains "{@beer_req}":
+                        set {_foundBeer} to true
+                        set {_beerItem} to loop-item
+                        stop loop
+                
+                if {_foundBeer} is true:
+                    cancel event
+                    if {lotus.making::%player%} is set:
+                        stop
+                    set {lotus.making::%player%} to true
+                    
+                    # Odebrání věcí
+                    remove 1 of player's tool from player
+                    remove 1 of {_beerItem} from player
+                    
+                    play sound "block.brewing_stand.brew" with volume 1 at event-block
+                    send action bar "&dDestilace esence pomocí alkoholu..." to player
+                    loop 5 times:
+                        show dragon breath particles at location of event-block
+                        wait 1 second
+                    
+                    set {_drug} to purple dye named "{@drug_name}" 
+                    set lore of {_drug} to "&7Silně návyková látka z Alexandrie."
+                    give {_drug} to player
+                    play sound "entity.player.levelup" with volume 0.5 to player
+                    delete {lotus.making::%player%}
+                else:
+                    send "&cK extrakci potřebuješ &6{@beer_req} &c(v lahvi)!" to player
+
+# --- 4. ÚČINKY (Konzumace) ---
+on right click:
+    if name of player's tool is "{@drug_name}":
+        cancel event
+        remove 1 of player's tool from player
+        send "&d&lEsence tě zaplavila neuvěřitelnou energií!" to player
+        apply speed 4 to player for 60 seconds
+        apply strength 2 to player for 60 seconds
+        apply regeneration 2 to player for 30 seconds
+        wait 30 seconds
+        apply nausea 2 to player for 40 seconds
+        apply blindness 1 to player for 5 seconds
+
+on inventory click:
+    if name of event-inventory is "Ender Chest":
+        if name of event-item contains "lotos":
+            send "&c&lVAROVÁNÍ: &7S touto látkou u Ender Truhly nemanipuluj!" to player
+            cancel event

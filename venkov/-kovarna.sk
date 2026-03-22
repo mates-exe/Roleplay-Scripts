@@ -1,0 +1,190 @@
+# =================================================================
+# PRÁCE: KOVÁŘSTVÍ (HEATING -> FORGING -> QUENCHING) - VIP VERZE
+# =================================================================
+
+options:
+    # Itemy
+    raw_iron: raw iron
+    hammer_name: &8&lKovářské kladivo
+    hot_ingot_name: &c&lRozžhavený ingot
+    forged_ingot_name: &6Vytvarovaný horký kus
+    steel_name: &b&lKrálovská ocel
+    
+    # Časy
+    heat_time: 5 seconds
+    burn_time: 15 seconds # Kdy se ingot spálí, pokud ho nevyndáš
+
+# --- 1. NASTAVENÍ DÍLNY ---
+command /setkovarna <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mesto.kovarna.pos1} to location of player
+            send "&8[Kovář] &f1. bod dílny nastaven."
+        else if arg-1 is "2":
+            set {mesto.kovarna.pos2} to location of player
+            send "&8[Kovář] &f2. bod dílny nastaven."
+
+# --- 2. ADMIN GIVE (KLADIVO) ---
+command /dejkladivo:
+    permission: rp.admin
+    trigger:
+        give 1 of iron pickaxe named "{@hammer_name}" with lore "&7Těžké kladivo pro tvarování žhavého železa." to player
+
+# --- 3. FÁZE 1: NAHŘÍVÁNÍ (BLAST FURNACE) ---
+on right click on blast furnace:
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+            cancel event
+            
+            # --- VIP KONTROLA ---
+            if player does not have permission "rp.work.kovar":
+                send action bar "&cPráce kováře je přístupná pouze pro &6&lVIP &chráče!" to player
+                stop
+            
+            # Vložení surového železa
+            if player's tool is {@raw_iron}:
+                
+                if {smith.heating::%location of event-block%} is set:
+                    send "&cTato pec už je obsazená!" to player
+                    stop
+                
+                remove 1 of player's tool from player
+                set {smith.heating::%location of event-block%} to true
+                
+                play sound "block.blastfurnace.fire_crackle" at event-block
+                send action bar "&6Nahřívám železo..." to player
+                
+                # Čekání na nahřátí
+                wait {@heat_time}
+                
+                # Změna stavu - je to hotové
+                set {smith.ready::%location of event-block%} to true
+                play sound "block.fire.ambient" at event-block
+                loop 30 times: # 15 sekund na vybrání
+                    if {smith.ready::%location of event-block%} is not set:
+                        stop # Hráč to stihl vybrat
+                    
+                    show flame particles at location 1 meter above event-block
+                    send action bar "&c&lINGOT JE ROZŽHAVENÝ! VYNDEJ HO!" to player
+                    wait 0.5 second
+                
+                # Pokud to nestihl - spálení
+                if {smith.ready::%location of event-block%} is set:
+                    delete {smith.ready::%location of event-block%}
+                    delete {smith.heating::%location of event-block%}
+                    play sound "block.lava.extinguish" at event-block
+                    send "&4&lIngot se roztavil a zničil!" to player
+                    drop 1 coal named "&8Spálený zbytek" at event-block
+
+# --- VYNDÁNÍ Z PECE ---
+on right click on blast furnace:
+    if {smith.ready::%location of event-block%} is set:
+        cancel event
+        
+        # Hráč musí mít prázdnou ruku (nebo rukavice, to je na tobě)
+        if player's tool is air:
+            delete {smith.ready::%location of event-block%}
+            delete {smith.heating::%location of event-block%}
+            
+            # Dá hráči horký ingot (Magma Cream vypadá žhavě)
+            give 1 of magma cream named "{@hot_ingot_name}" with lore "&7Pálí! Rychle na kovadlinu!" to player
+            play sound "item.firecharge.use" at player
+            send "&6Vytáhl jsi žhavý ingot." to player
+            
+            # Efekt popálení (pokud to dlouho drží - volitelné)
+            apply fire resistance 1 to player for 2 seconds # Aby ho to nezabilo hned
+
+# --- 4. FÁZE 2: KOVÁNÍ (ANVIL) ---
+on right click on anvil:
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+            cancel event
+
+            # --- VIP KONTROLA ---
+            if player does not have permission "rp.work.kovar":
+                send action bar "&cPráce kováře je přístupná pouze pro &6&lVIP &chráče!" to player
+                stop
+            
+            # Kontrola, zda má hráč u sebe kladivo (iron pickaxe s názvem)
+            set {_hasHammer} to false
+            loop all items in player's inventory:
+                if uncolored name of loop-item contains "Kovářské kladivo":
+                    set {_hasHammer} to true
+                    stop loop
+
+            if {_hasHammer} is false:
+                send "&cK práci na kovadlině potřebuješ mít v inventáři Kovářské kladivo!" to player
+                stop
+
+            # Hráč musí držet Horký Ingot
+            set {_toolName} to uncolored name of player's tool
+            if {_toolName} contains "Rozžhavený ingot":
+                
+                if {smith.hammering::%player%} is set:
+                    stop
+                set {smith.hammering::%player%} to true
+                
+                send action bar "&8Kování: [&7|||||&8]" to player
+                play sound "block.anvil.place" with pitch 0.5 at event-block
+                wait 10 ticks
+                
+                send action bar "&8Kování: [&e|&7||||&8]" to player
+                play sound "block.anvil.use" with pitch 1 at event-block
+                wait 10 ticks
+                
+                send action bar "&8Kování: [&e||&7|||&8]" to player
+                play sound "block.anvil.land" with pitch 0.8 at event-block
+                wait 10 ticks
+                
+                send action bar "&8Kování: [&e|||&7||&8]" to player
+                play sound "block.anvil.use" with pitch 1.2 at event-block
+                wait 10 ticks
+                
+                send action bar "&8Kování: [&e|||||&8]" to player
+                play sound "block.anvil.use" with pitch 0.5 at event-block
+                
+                remove 1 of player's tool from player
+                
+                # Výsledek kování (Polotovar)
+                give 1 of brick named "{@forged_ingot_name}" with lore "&7Vytvarované, ale stále horké." and "&7Musíš to zakalit ve vodě!" to player
+                
+                delete {smith.hammering::%player%}
+
+# --- 5. FÁZE 3: KALENÍ (CAULDRON) ---
+on right click on water cauldron:
+    # 1. Kontrola regionu
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+
+            # --- VIP KONTROLA ---
+            if player does not have permission "rp.work.kovar":
+                send action bar "&cPráce kováře je přístupná pouze pro &6&lVIP &chráče!" to player
+                stop
+
+            # 3. Získání jména itemu v ruce (bez barev) pro spolehlivé porovnání
+            set {_toolName} to uncolored name of player's tool
+            
+            # A) SPRÁVNÝ PŘEDMĚT (Vytvarovaný kus / Brick)
+            if {_toolName} contains "Vytvarovaný horký kus":
+                cancel event
+                remove 1 of player's tool from player
+                
+                # Efekty syčení páry
+                play sound "block.lava.extinguish" with volume 1 at event-block
+                show 20 cloud particles at location 1 meter above event-block
+                send action bar "&bKalení oceli..." to player
+                
+                wait 1 second
+                
+                # FINÁLNÍ PRODUKT
+                give 1 of iron ingot named "{@steel_name}" with lore "&bPrvotřídní ocel z hlavní kovárny." to player
+                play sound "entity.experience_orb.pickup" at player
+                
+            # B) ŠPATNÝ PŘEDMĚT (Ještě nevytvarované Magma)
+            else if {_toolName} contains "Rozžhavený ingot":
+                cancel event
+                send "&cTo nemůžeš zchladit hned! Nejdřív to vytvaruj na kovadlině." to player
+
+on quit:
+    delete {smith.hammering::%player%}

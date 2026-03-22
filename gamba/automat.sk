@@ -1,0 +1,139 @@
+# =================================================================
+# SYSTÉM AUTOMATU: FARAONŮV BANDITA 2.0 (Ancient RP)
+# =================================================================
+
+options:
+    prefix: &8[&6Automat&8] &r
+    s1: apple named "&aJablko"
+    s2: gold ingot named "&eZlatý ingot"
+    s3: diamond named "&bDiamant"
+    s4: netherite ingot named "&d&lNETHERITE"
+    price: 1000 
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+
+
+# --- 1. ADMIN NASTAVENÍ LOKACE ---
+command /setautomat:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {automat.loc} to location of target block
+            send "{@prefix} &aAutomat nastaven na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {automat.loc} is set:
+        if location of event-block is {automat.loc}:
+            cancel event
+            if {automat.active::%player%} is set:
+                send "{@prefix} &cTvůj stroj už pracuje!" to player
+                stop
+            openAutomat(player)
+
+# --- 3. GUI ---
+function openAutomat(p: player):
+    set {_gui} to chest inventory with 3 rows named "Faraonův Bandita"
+    loop 27 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+    
+    set slot 11 of {_gui} to barrier named "&7Válec 1"
+    set slot 13 of {_gui} to barrier named "&7Válec 2"
+    set slot 15 of {_gui} to barrier named "&7Válec 3"
+    
+    # Aktualizované lore pro páku
+    set slot 22 of {_gui} to lever named "&6&lZATAHAT ZA PÁKU" with lore "&7Cena: &e{@price}$" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Faraonův Bandita":
+        cancel event
+        if {automat.active::%player%} is true:
+            send action bar "&cStroj pracuje, vyčkej na výsledek!" to player
+            stop
+            
+        if clicked slot is 22:
+            # --- NOVÁ KONTROLA ŽETONU ---
+            if player does not have 1 of {@token}:
+                send "{@prefix} &cNemáš u sebe Kasino Žeton! Kup si ho u pokladny." to player
+                play sound "block.chest.locked" at player
+                stop
+                
+            # Kontrola peněz
+            if player's balance < {@price}:
+                send "{@prefix} &cNemáš dost peněz ({@price}$)" to player
+                stop
+                
+            # ODEBRÁNÍ ŽETONU A PENĚZ
+            remove 1 of {@token} from player
+            execute console command "eco take %player% {@price}"
+            
+            # Pokud máš funkci na podíl provozovateli (z předchozích verzí)
+            # payKasinoShare(player) 
+            
+            startSlotAnim(player, event-inventory)
+
+# --- 5. ANIMACE TOČENÍ S LOCKEM ---
+function startSlotAnim(p: player, inv: inventory):
+    set {automat.active::%{_p}%} to true
+    set {automat.current_inv::%{_p}%} to {_inv} 
+    
+    play sound "block.piston.extend" with volume 1 and pitch 1 at {_p}
+    
+    set {_pool::*} to {@s1}, {@s1}, {@s1}, {@s1}, {@s1}, {@s2}, {@s2}, {@s2}, {@s3}, {@s3} and {@s4}
+    
+    loop 15 times:
+        if loop-number <= 5:
+            set slot 11 of {_inv} to random element out of {_pool::*}
+        if loop-number <= 10:
+            set slot 13 of {_inv} to random element out of {_pool::*}
+        if loop-number <= 15:
+            set slot 15 of {_inv} to random element out of {_pool::*}
+            
+        play sound "block.note_block.hat" with volume 0.5 and pitch 2 at {_p}
+        wait 3 ticks
+        
+    wait 10 ticks
+    set {_v1} to slot 11 of {_inv}
+    set {_v2} to slot 13 of {_inv}
+    set {_v3} to slot 15 of {_inv}
+    
+    if {_v1} is {_v2}:
+        if {_v2} is {_v3}:
+            set {_reward} to 0
+            if {_v1} is {@s1}:
+                set {_reward} to {@price} * 2
+            else if {_v1} is {@s2}:
+                set {_reward} to {@price} * 5
+            else if {_v1} is {@s3}:
+                set {_reward} to {@price} * 15
+            else if {_v1} is {@s4}:
+                set {_reward} to {@price} * 100
+                broadcast "{@prefix} &6&l%name of {_p}% &7vyhrál &d&lJACKPOT &7na automatu!"
+                launch ball firework colored purple and gold at {_p}
+
+            execute console command "eco give %{_p}% %{_reward}%"
+            send "{@prefix} &a&lVÝHRA! &fZískáváš &e%{_reward}%$" to {_p}
+            play sound "entity.player.levelup" with volume 1 at {_p}
+    else:
+        send "{@prefix} &7Žádná shoda. Zkus to znovu!" to {_p}
+        play sound "block.conduit.deactivate" with volume 0.5 at {_p}
+        
+    delete {automat.active::%{_p}%}
+    delete {automat.current_inv::%{_p}%}
+
+# --- 6. POJISTKA PROTI ZAVŘENÍ ---
+on inventory close:
+    if name of event-inventory is "Faraonův Bandita":
+        if {automat.active::%player%} is true:
+            wait 1 tick
+            if {automat.current_inv::%player%} is set:
+                open {automat.current_inv::%player%} to player
+                send action bar "&c&lNelze odejít, dokud se válce točí!" to player
+
+on quit:
+    delete {automat.active::%player%}
+    delete {automat.current_inv::%player%}

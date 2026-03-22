@@ -1,0 +1,172 @@
+# =================================================================
+# SYSTÉM: THOVTOVY KARTY (Hi-Lo Game - Ancient RP)
+# =================================================================
+
+options:
+    prefix: &8[&6Karty&8] &r
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    bg: black stained glass pane named " "
+    card_item: paper
+    # --- TADY NASTAVUJEŠ OBTÍŽNOST ---
+    win_increment: 0.1 # O kolik se zvýší násobitel za každou trefu
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setkarty:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {karty.loc} to location of target block
+            send "{@prefix} &aHra Karty osudu nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {karty.loc} is set:
+        if location of event-block is {karty.loc}:
+            cancel event
+            if {karty.active::%player%} is set:
+                send "{@prefix} &cPrávě hraješ karty!" to player
+                stop
+            
+            set {karty.bet::%player%} to 0
+            openKarty(player)
+
+# --- 3. GUI ---
+function openKarty(p: player):
+    set {_gui} to chest inventory with 5 rows named "Thovtovy karty osudu"
+    loop 45 times:
+        set slot (loop-number - 1) of {_gui} to {@bg}
+    
+    # Sázková tlačítka
+    set slot 4 of {_gui} to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{karty.bet::%{_p}%}%$"
+    set slot 16 of {_gui} to paper named "&f+ 1 000$"
+    set slot 25 of {_gui} to paper named "&f+ 5 000$"
+    set slot 34 of {_gui} to paper named "&f+ 10 000$"
+    set slot 43 of {_gui} to barrier named "&cReset"
+    
+    # Start
+    set slot 22 of {_gui} to sunflower named "&6&l&nROZDAT KARTY" with lore "&7Vsadíš peníze a zkusíš štěstí." and "" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Thovtovy karty osudu":
+        cancel event
+        set {_p} to player
+        
+        # --- FÁZE SÁZENÍ ---
+        if {karty.active::%{_p}%} is not set:
+            if index of clicked slot is 16, 25 or 34:
+                set {_add} to 1000 if index of clicked slot is 16
+                set {_add} to 5000 if index of clicked slot is 25
+                set {_add} to 10000 if index of clicked slot is 34
+                add {_add} to {karty.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+            
+            if clicked slot is 43:
+                set {karty.bet::%{_p}%} to 0
+                play sound "block.lava.extinguish" at {_p}
+                
+            set slot 4 of event-inventory to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{karty.bet::%{_p}%}%$"
+            set slot 22 of event-inventory to sunflower named "&6&l&nROZDAT KARTY" with lore "&7Cena: &e%{karty.bet::%{_p}%}%$" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+
+            if clicked slot is 22:
+                if {karty.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit!" to {_p}
+                    stop
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš žeton!" to {_p}
+                    stop
+                if {_p}'s balance < {karty.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš dost peněz!" to {_p}
+                    stop
+                
+                # Start hry
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{karty.bet::%{_p}%}%"
+                payKasinoShare({_p})
+                
+                set {karty.active::%{_p}%} to true
+                set {karty.mult::%{_p}%} to 1.0
+                set {karty.current::%{_p}%} to random integer between 1 and 13
+                
+                updateKartyGUI({_p}, event-inventory)
+
+        # --- FÁZE HRY ---
+        else if {karty.active::%{_p}%} is true:
+            # VYŠŠÍ (slot 20)
+            if index of clicked slot is 20:
+                playGameKarty({_p}, event-inventory, "HIGHER")
+            # NIŽŠÍ (slot 24)
+            if index of clicked slot is 24:
+                playGameKarty({_p}, event-inventory, "LOWER")
+            # CASHOUT (slot 22)
+            if index of clicked slot is 22:
+                set {_final} to floor({karty.bet::%{_p}%} * {karty.mult::%{_p}%})
+                execute console command "eco give %{_p}% %{_final}%"
+                send "{@prefix} &a&lVYBRÁNO! &fOdcházíš s &e%{_final}%$" to {_p}
+                play sound "entity.experience_orb.pickup" at {_p}
+                delete {karty.active::%{_p}%}
+                close inventory of {_p}
+
+# --- 5. LOGIKA HRY ---
+function playGameKarty(p: player, inv: inventory, guess: text):
+    set {_next} to random integer between 1 and 13
+    set {_current} to {karty.current::%{_p}%}
+    
+    set {_win} to false
+    if {_guess} is "HIGHER":
+        if {_next} > {_current}:
+            set {_win} to true
+    else if {_guess} is "LOWER":
+        if {_next} < {_current}:
+            set {_win} to true
+            
+    # Pokud padne stejná karta, dům (server) vždy vyhrává - klasické Hi-Lo pravidlo
+    
+    if {_win} is true:
+        add {@win_increment} to {karty.mult::%{_p}%} # <--- TADY změň 0.5 na 0.2
+        set {karty.current::%{_p}%} to {_next}
+        play sound "block.note_block.bit" with pitch 2 at {_p}
+        updateKartyGUI({_p}, {_inv})
+    else:
+        # PROHRA
+        set slot 22 of {_inv} to barrier named "&4&lPROHRA!" with lore "&7Padla karta: &e%{_next}%"
+        play sound "entity.ghast.scream" with volume 0.5 at {_p}
+        send "{@prefix} &cŠpatný odhad! Padla &e%{_next}%&c. Ztratil jsi vše." to {_p}
+        delete {karty.active::%{_p}%}
+        wait 2 seconds
+        close inventory of {_p}
+
+function updateKartyGUI(p: player, inv: inventory):
+    loop 45 times:
+        set slot (loop-number - 1) of {_inv} to {@bg}
+    
+    set {_c} to {karty.current::%{_p}%}
+    set {_win} to floor({karty.bet::%{_p}%} * {karty.mult::%{_p}%})
+    
+    # Zobrazení aktuální karty
+    set slot 13 of {_inv} to {@card_item} named "&6&lKarta: %{_c}%" with lore "&7Zkus uhádnout další!"
+    
+    # Tlačítka
+    set slot 20 of {_inv} to green wool named "&a&lVYŠŠÍ ▲" with lore "&7Věříš, že padne 14-%{_c}+1%?"
+    set slot 24 of {_inv} to red wool named "&c&lNIŽŠÍ ▼" with lore "&7Věříš, že padne 1-%{_c}-1%?"
+    
+    set slot 4 of {_inv} to paper named "&e&lSTAV HRY" with lore "&7Aktuální výhra: &a%{_win}%$" and "&7Násobitel: &b%{karty.mult::%{_p}%}%x"
+    
+    if {karty.mult::%{_p}%} > 1.0:
+        set slot 22 of {_inv} to gold ingot named "&a&lVYBRAT VÝHRU" with lore "&7Vezmeš si &e%{_win}%$ &7a skončíš."
+    else:
+        set slot 22 of {_inv} to barrier named "&c&lZATÍM NEMŮŽEŠ VYBRAT" with lore "&7Musíš aspoň jednou vyhrát."
+
+on inventory close:
+    if name of event-inventory is "Thovtovy karty osudu":
+        if {karty.active::%player%} is true:
+            wait 1 tick
+            open event-inventory to player
+            send action bar "&c&lOsud nelze přerušit! Hraj dál nebo prohraj!" to player
+
+on quit:
+    delete {karty.active::%player%}

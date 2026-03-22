@@ -1,0 +1,186 @@
+# =================================================================
+# SYSTÉM: RAŮV VZESTUP 2.0 (1 SAFE, 2 TRAPS - Hardcore)
+# =================================================================
+
+options:
+    prefix: &8[&6Vzestup&8] &r
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    bg: black stained glass pane named " "
+    hidden: chiseled sandstone named "&e&l??? " with lore "&7Zde může být cesta dál..."
+    success: gold block named "&6&lPOSTUP" with lore "&aMěl jsi štěstí!"
+    fail: fire charge named "&4&lKLETBA" with lore "&cPyramida tě pohltila!"
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setvzestup:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {vzestup.loc} to location of target block
+            send "{@prefix} &aHra Vzestup nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {vzestup.loc} is set:
+        if location of event-block is {vzestup.loc}:
+            cancel event
+            if {vzestup.active::%player%} is set:
+                send "{@prefix} &cPrávě stoupáš pyramidou!" to player
+                stop
+            set {vzestup.bet::%player%} to 0
+            openVzestup(player)
+
+# --- 3. GUI ---
+function openVzestup(p: player):
+    set {_gui} to chest inventory with 6 rows named "Raův Vzestup"
+    loop 54 times:
+        set slot (loop-number - 1) of {_gui} to {@bg}
+    
+    set slot 4 of {_gui} to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{vzestup.bet::%{_p}%}%$"
+    set slot 16 of {_gui} to paper named "&f+ 1 000$"
+    set slot 25 of {_gui} to paper named "&f+ 5 000$"
+    set slot 34 of {_gui} to paper named "&f+ 10 000$"
+    set slot 43 of {_gui} to barrier named "&cReset"
+    set slot 22 of {_gui} to sunflower named "&6&l&nVSTOUPIT DO PYRAMIDY" with lore "&7Cena: &e%{vzestup.bet::%{_p}%}%$" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Raův Vzestup":
+        cancel event
+        set {_p} to player
+        
+        # --- FÁZE 1: SÁZENÍ ---
+        if {vzestup.active::%{_p}%} is not set:
+            if index of clicked slot is 16, 25 or 34:
+                set {_add} to 1000 if index of clicked slot is 16
+                set {_add} to 5000 if index of clicked slot is 25
+                set {_add} to 10000 if index of clicked slot is 34
+                add {_add} to {vzestup.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+            
+            if clicked slot is 43:
+                set {vzestup.bet::%{_p}%} to 0
+                play sound "block.lava.extinguish" at {_p}
+                
+            set slot 4 of event-inventory to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{vzestup.bet::%{_p}%}%$"
+            set slot 22 of event-inventory to sunflower named "&6&l&nVSTOUPIT DO PYRAMIDY" with lore "&7Cena: &e%{vzestup.bet::%{_p}%}%$" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+
+            if clicked slot is 22:
+                if {vzestup.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit!" to {_p}
+                    stop
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš Kasino Žeton!" to {_p}
+                    stop
+                if {_p}'s balance < {vzestup.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš peníze!" to {_p}
+                    stop
+                
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{vzestup.bet::%{_p}%}%"
+                payKasinoShare({_p})
+                
+                set {vzestup.active::%{_p}%} to true
+                set {vzestup.level::%{_p}%} to 1 
+                set {vzestup.mult::%{_p}%} to 0.0 # Start na nule
+                
+                # --- GENERUJEME JEN 1 BEZPEČNÉ POLE (Ostatní jsou pasti) ---
+                loop 5 times:
+                    set {_base} to 57 - (loop-number * 9)
+                    set {vzestup.safe::%{_p}%::%loop-number%} to random element out of ({_base}-1, {_base} and {_base}+1)
+                
+                updateVzestupGUI({_p}, event-inventory)
+
+        # --- FÁZE 2: VZESTUP ---
+        else if {vzestup.active::%{_p}%} is true:
+            set {_s} to index of clicked slot
+            set {_lvl} to {vzestup.level::%{_p}%}
+            set {_base} to 57 - ({_lvl} * 9)
+            
+            if {_s} is ({_base}-1) or {_base} or ({_base}+1):
+                if slot {_s} of event-inventory is {@hidden}:
+                    
+                    # Kontrola, zda trefil to JEDINÉ bezpečné pole
+                    if {_s} is {vzestup.safe::%{_p}%::%{_lvl}%}:
+                        # POKRAČOVÁNÍ
+                        set slot {_s} of event-inventory to {@success}
+                        play sound "block.note_block.bit" with pitch 2 at {_p}
+                        
+                        # --- NOVÉ SNÍŽENÉ NÁSOBITELE ---
+                        if {_lvl} is 1:
+                            set {vzestup.mult::%{_p}%} to 1.2
+                        else if {_lvl} is 2:
+                            set {vzestup.mult::%{_p}%} to 1.8
+                        else if {_lvl} is 3:
+                            set {vzestup.mult::%{_p}%} to 2.5
+                        else if {_lvl} is 4:
+                            set {vzestup.mult::%{_p}%} to 3.5
+                        else if {_lvl} is 5:
+                            set {vzestup.mult::%{_p}%} to 5.0 # Max výhra je jen 5x sázky
+                            
+                        add 1 to {vzestup.level::%{_p}%}
+                        
+                        if {vzestup.level::%{_p}%} > 5:
+                            set {_win} to floor({vzestup.bet::%{_p}%} * {vzestup.mult::%{_p}%})
+                            execute console command "eco give %{_p}% %{_win}%"
+                            send "{@prefix} &6&lVRCHOL! &fDosáhl jsi vrcholu a získáváš &e%{_win}%$!" to {_p}
+                            play sound "ui.toast.challenge_complete" at {_p}
+                            delete {vzestup.active::%{_p}%}
+                            close inventory of {_p}
+                        else:
+                            updateVzestupGUI({_p}, event-inventory)
+                    else:
+                        # PROHRA (Trefil jednu ze dvou pastí)
+                        set slot {_s} of event-inventory to {@fail}
+                        play sound "entity.generic.explode" at {_p}
+                        send "{@prefix} &4&lKLETBA! &7Špatné pole. Přišel jsi o všechno." to {_p}
+                        delete {vzestup.active::%{_p}%}
+                        wait 2 seconds
+                        close inventory of {_p}
+
+            # VÝBĚR (Cashout)
+            if clicked slot is 7:
+                if {vzestup.level::%{_p}%} > 1:
+                    set {_win} to floor({vzestup.bet::%{_p}%} * {vzestup.mult::%{_p}%})
+                    execute console command "eco give %{_p}% %{_win}%"
+                    send "{@prefix} &a&lVYBRÁNO! &fOdcházíš s &e%{_win}%$" to {_p}
+                    play sound "entity.experience_orb.pickup" at {_p}
+                    delete {vzestup.active::%{_p}%}
+                    close inventory of {_p}
+
+# --- 5. POMOCNÉ FUNKCE ---
+function updateVzestupGUI(p: player, inv: inventory):
+    set {_lvl} to {vzestup.level::%{_p}%}
+    set {_win} to floor({vzestup.bet::%{_p}%} * {vzestup.mult::%{_p}%})
+    
+    loop 54 times:
+        set slot (loop-number - 1) of {_inv} to {@bg}
+    
+    loop 5 times:
+        set {_row} to loop-number
+        set {_base} to 57 - ({_row} * 9)
+        if {_row} < {_lvl}:
+            set slot ({_base}-1), {_base} and ({_base}+1) of {_inv} to lime stained glass pane named "&aProjitě"
+        else if {_row} is {_lvl}:
+            set slot ({_base}-1), {_base} and ({_base}+1) of {_inv} to {@hidden}
+        else:
+            set slot ({_base}-1), {_base} and ({_base}+1) of {_inv} to gray stained glass pane named "&8Zamčeno"
+
+    set slot 4 of {_inv} to paper named "&e&lPRŮZKUM PYRAMIDY" with lore "&7Aktuální výhra: &a%{_win}%$" and "&7Násobitel: &b%{vzestup.mult::%{_p}%}%x"
+    
+    if {_lvl} > 1:
+        set slot 7 of {_inv} to gold ingot named "&a&lVYBRAT VÝHRU" with lore "&7Vezmeš si &e%{_win}%$ &7a utečeš."
+    else:
+        set slot 7 of {_inv} to barrier named "&c&lPRVNÍ PATRO" with lore "&7Musíš postoupit aspoň jednou."
+
+on inventory close:
+    if name of event-inventory is "Raův Vzestup":
+        if {vzestup.active::%player%} is true:
+            wait 1 tick
+            open event-inventory to player
+
+on quit:
+    delete {vzestup.active::%player%}

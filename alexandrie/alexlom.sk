@@ -1,0 +1,144 @@
+# =================================================================
+# ALEXANDRIE - LOM (VANILLA STYL + REGEN + SECURITY)
+# =================================================================
+
+options:
+    alex_pickaxe: "&eAlexandrijský krumpáč"
+    dirty_gem: "&8Znečištěný drahokam"
+    regen_time: 30 seconds
+
+# --- 1. FUNKCE PRO BEZPEČNÉ ITEMY ---
+
+function getAlexPickaxe() :: item:
+    set {_i} to iron pickaxe named {@alex_pickaxe}
+    set lore of {_i} to "&7Speciální krumpáč pro těžbu v lomu."
+    enchant {_i} with efficiency 4
+    enchant {_i} with unbreaking 3
+    #set custom model data of {_i} to 1003
+    return {_i}
+
+function getDirtyGem() :: item:
+    set {_i} to flint named {@dirty_gem}
+    set lore of {_i} to "&7Nutné prosít na sítě."
+    set custom model data of {_i} to 1201
+    return {_i}
+
+# --- 2. ADMIN PŘÍKAZY ---
+
+command /dejkrumpacalex:
+    permission: rp.admin
+    trigger:
+        give player getAlexPickaxe()
+        send "&e[Alex] &fObdržel jsi Alexandrijský krumpáč."
+
+# --- 3. HLAVNÍ LOGIKA TĚŽBY (ON BREAK) ---
+
+on break:
+    # Kontrola regionu lomu
+    if {alex.lom.pos1} is not set:
+        stop
+    
+    if location of event-block is within {alex.lom.pos1} and {alex.lom.pos2}:
+        
+        # --- A) KONTROLA POVOLENÝCH BLOKŮ ---
+        if event-block is suspicious sand or suspicious gravel:
+            
+            # Kontrola nástroje (CMD 1003)
+            if custom model data of player's tool is 1003:
+                cancel event # Zrušíme vanilla zničení
+                
+                set {_loc} to location of event-block
+                set {_origType} to type of event-block
+                
+                # Změna na vyčerpaný stav (Písek)
+                set block at {_loc} to sand
+                play sound "block.sand.break" with volume 1 at {_loc}
+                
+                # Regenerace
+                handleAlexRegen({_loc}, {_origType})
+                damageTool(player)
+
+                # --- DROP SYSTÉM ---
+                # Vždy písek (CMD 1202)
+                set {_s} to sand named "&7Jenom písek..."
+                set custom model data of {_s} to 1202
+                give 1 of {_s} to player
+                
+                # 30% šance na Znečištěný drahokam
+                if chance of 30%:
+                    give getDirtyGem() to player
+                    send action bar "&b&lNašel jsi znečištěný drahokam!" to player
+            
+            else:
+                cancel event
+                send action bar "&cNa tento tvrdý pískovec potřebuješ Alexandrijský krumpáč!" to player
+        
+        # --- B) VYČERPANÉ LOŽISKO ---
+        else if event-block is sand:
+            # Pokud je to písek v lomu, bereme ho jako vyčerpaný pískovec
+            cancel event
+            send action bar "&8Ložisko je vyčerpané, počkej na obnovu..." to player
+
+        # --- C) ANTI-GRIEF OCHRANA ---
+        else:
+            if player does not have permission "rp.admin":
+                cancel event
+                send action bar "&cTuto část lomu nemůžeš ničit!" to player
+
+# --- 4. PROSÉVÁNÍ (SYNC S CMD) ---
+
+on right click on daylight detector:
+    if player is sneaking:
+        stop
+    
+    # Kontrola regionu (prosévání jen v lomu)
+    if {alex.lom.pos1} is set:
+        if location of event-block is not within {alex.lom.pos1} and {alex.lom.pos2}:
+            stop
+
+    # Kontrola nástroje (Znečištěný drahokam s CMD 1201)
+    if custom model data of player's tool is 1201:
+        cancel event
+        remove 1 of player's tool from player
+        
+        play sound "block.sand.break" with volume 0.8 at player
+        show 10 splash particles at event-block
+        send action bar "&bProsíváš písek ve vodě..." to player
+        
+        wait 1 second
+        play sound "item.bucket.empty" with volume 0.8 at player
+        
+        # --- ODMĚNY S CMD ---
+        set {_rand} to random integer between 1 and 100
+        if {_rand} <= 5: # Smaragd
+            set {_i} to emerald named "&aSmaragd"
+            #set custom model data of {_i} to 1204
+            give {_i} to player
+            send "&a&lNašel jsi Smaragd!" to player
+        else if {_rand} <= 10: # Diamant
+            set {_i} to diamond named "&bDiamant"
+            #set custom model data of {_i} to 1205
+            give {_i} to player
+            send "&b&lNašel jsi Diamant!" to player
+        else if {_rand} <= 50: # Zlato
+            set {_i} to raw gold named "&r&eZlatá ruda"
+            #set custom model data of {_i} to 1206
+            give {_i} to player
+        else if {_rand} <= 53: # Ledek
+            set {_i} to iron nugget named "&r&7Ledek"
+            #set custom model data of {_i} to 1203
+            give {_i} to player
+            send "&7Našel jsi Ledek!" to player
+        else:
+            give sand named "&7Jenom písek..." to player
+            
+    else if player's tool is not air:
+        send action bar "&7Zde můžeš prosívat Znečištěné drahokamy." to player
+
+# --- 5. POMOCNÉ FUNKCE ---
+
+function handleAlexRegen(loc: location, type: item type):
+    wait {@regen_time}
+    if block at {_loc} is sand:
+        set block at {_loc} to {_type}
+        play sound "block.sand.place" with volume 0.3 at {_loc}

@@ -1,0 +1,182 @@
+# =================================================================
+# SYSTÉM: ALEXANDRIJSKÉ SKOŘÁPKY 2.3 (Ancient RP + Žetony)
+# =================================================================
+
+options:
+    prefix: &8[&6Skořápky&8] &r
+    shell: barrel named "&6Tajemný sud"
+    win_item: emerald named "&a&lFaraonův Smaragd"
+    lose_item: charcoal named "&8Prázdnota"
+    # DEFINICE ŽETONU (Heart of the Sea)
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setskorapky:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {skorapky.loc} to location of target block
+            send "{@prefix} &aSkořápky nastaveny na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {skorapky.loc} is set:
+        if location of event-block is {skorapky.loc}:
+            cancel event
+            if {skorapky.active::%player%} is set:
+                send "{@prefix} &cPrávě hraješ!" to player
+                stop
+            
+            set {skorapky.bet::%player%} to 0
+            openSkorapky(player)
+
+# --- 3. GUI ---
+function openSkorapky(p: player):
+    set {_gui} to chest inventory with 5 rows named "Pouštní Skořápky"
+    loop 45 times:
+        set slot (loop-number - 1) of {_gui} to gray stained glass pane named " "
+    
+    set slot 4 of {_gui} to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{skorapky.bet::%{_p}%}%$"
+    
+    set slot 20 of {_gui} to {@shell} with lore "&7Je smaragd tady?"
+    set slot 22 of {_gui} to {@shell} with lore "&7Nebo tady?"
+    set slot 24 of {_gui} to {@shell} with lore "&7Nebo v tomto?"
+    
+    set slot 37 of {_gui} to paper named "&f+ 100$"
+    set slot 38 of {_gui} to paper named "&f+ 500$"
+    set slot 39 of {_gui} to paper named "&f+ 2 500$"
+    set slot 40 of {_gui} to paper named "&f+ 10 000$"
+    set slot 41 of {_gui} to paper named "&f+ 50 000$"
+    set slot 43 of {_gui} to barrier named "&cResetovat částku"
+    
+    # Startovní tlačítko s informací o žetonu
+    set slot 13 of {_gui} to sunflower named "&6&l&nZAMÍCHAT A HRÁT!" with lore "&7Výhra: &e3x sázky" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Pouštní Skořápky":
+        cancel event
+        set {_p} to player
+        
+        # SÁZENÍ
+        if {skorapky.active::%{_p}%} is not set:
+            if index of clicked slot is between 37 and 41:
+                set {_add} to 100 if index of clicked slot is 37
+                set {_add} to 500 if index of clicked slot is 38
+                set {_add} to 2500 if index of clicked slot is 39
+                set {_add} to 10000 if index of clicked slot is 40
+                set {_add} to 50000 if index of clicked slot is 41
+                add {_add} to {skorapky.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+                
+            if clicked slot is 43:
+                set {skorapky.bet::%{_p}%} to 0
+                play sound "block.lava.extinguish" at {_p}
+                
+            set slot 4 of event-inventory to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{skorapky.bet::%{_p}%}%$"
+
+            if clicked slot is 13:
+                # --- KONTROLA ŽETONU ---
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš u sebe Kasino Žeton!" to {_p}
+                    play sound "block.chest.locked" at {_p}
+                    stop
+
+                if {skorapky.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit peníze!" to {_p}
+                    stop
+                if {_p}'s balance < {skorapky.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš dostatek peněz!" to {_p}
+                    stop
+                
+                # Odebrání žetonu a peněz
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{skorapky.bet::%{_p}%}%"
+                
+                # Podíl provozovateli
+                payKasinoShare({_p}) 
+                
+                startSkorapkyAnim({_p}, event-inventory)
+
+        # VÝBĚR SUDU
+        else if {skorapky.active::%{_p}%} is "CHOOSING":
+            if index of clicked slot is 20, 22 or 24:
+                revealResult({_p}, event-inventory, index of clicked slot)
+
+# --- 5. ANIMACE (S NÁHODNÝM KONCEM) ---
+function startSkorapkyAnim(p: player, inv: inventory):
+    set {skorapky.active::%{_p}%} to "ANIMATING"
+    set {skorapky.current_inv::%{_p}%} to {_inv}
+    
+    set {_startPos} to random element out of (20, 22 and 24)
+    set slot {_startPos} of {_inv} to {@win_item}
+    play sound "block.note_block.pling" with volume 1 at {_p}
+    wait 1.5 seconds
+    
+    loop 15 times:
+        if name of {_p}'s current inventory is not "Pouštní Skořápky":
+            delete {skorapky.active::%{_p}%}
+            stop
+            
+        set slot 20, 22 and 24 of {_inv} to {@shell}
+        play sound "block.gravel.step" with volume 0.6 and pitch 1.5 at {_p}
+        
+        set {_temp} to random element out of (20, 22 and 24)
+        set slot {_temp} of {_inv} to orange stained glass pane named "&6Míchání..."
+        wait 3 ticks
+        set slot {_temp} of {_inv} to {@shell}
+        wait 2 ticks
+        
+    set {skorapky.winner::%{_p}%} to random element out of (20, 22 and 24)
+    
+    set {skorapky.active::%{_p}%} to "CHOOSING"
+    set slot 13 of {_inv} to clock named "&e&lVYBER SI SUD!" with lore "&7Smaragd byl přemístěn..."
+    play sound "block.bell.use" with volume 1 and pitch 2 at {_p}
+
+# --- 6. VYHODNOCENÍ ---
+function revealResult(p: player, inv: inventory, pick: number):
+    set {skorapky.active::%{_p}%} to "FINISHED"
+    
+    loop (20, 22 and 24):
+        if loop-value is {skorapky.winner::%{_p}%}:
+            set slot loop-value of {_inv} to {@win_item}
+        else:
+            set slot loop-value of {_inv} to {@lose_item}
+            
+    wait 10 ticks 
+    
+    if {_pick} is {skorapky.winner::%{_p}%}:
+        set {_winAmount} to {skorapky.bet::%{_p}%} * 3
+        execute console command "eco give %{_p}% %{_winAmount}%"
+        send "{@prefix} &a&lVÝHRA! &fTrefil jsi to! Získáváš &e%{_winAmount}%$&f." to {_p}
+        play sound "entity.player.levelup" with volume 1 at {_p}
+    else:
+        send "{@prefix} &c&lPROHRA. &7Smaragd byl v jiném sudu. Sázka propadla." to {_p}
+        play sound "entity.villager.no" with volume 1 at {_p}
+    
+    delete {skorapky.active::%{_p}%}
+    delete {skorapky.winner::%{_p}%}
+    delete {skorapky.current_inv::%{_p}%}
+    
+    wait 3 seconds
+    if name of {_p}'s current inventory is "Pouštní Skořápky":
+        close inventory of {_p}
+
+# --- 7. POJISTKY ---
+on inventory close:
+    if name of event-inventory is "Pouštní Skořápky":
+        if {skorapky.active::%player%} is "ANIMATING" or "CHOOSING":
+            wait 1 tick
+            if {skorapky.current_inv::%player%} is set:
+                open {skorapky.current_inv::%player%} to player
+                send action bar "&c&lHra probíhá, nemůžeš utéct!" to player
+
+on quit:
+    delete {skorapky.active::%player%}
+    delete {skorapky.winner::%player%}
+    delete {skorapky.current_inv::%player%}

@@ -1,0 +1,334 @@
+# =================================================================
+# THE PYRAMID HEIST 2.3 - KLETBA SPOUŠTĚNÁ STRÁŽCEM
+# =================================================================
+
+options:
+    heist_prefix: &6[HEIST] &r
+    dynamite_name: Nestabilní dynamit
+    blueprints_name: Plány pyramidy
+    beer_name: Alexandrijský Speciál (12°)
+    torch_name: Pochodeň proti kletbě
+    eye_name: &5Faraonovo oko
+    guard_name: &6Strážce Hrobky
+    cooldown_time: 24 hours
+
+# --- 1. EFEKTY A ÚDRŽBA ---
+
+every 2 seconds:
+    if {heist.loc.torch} is set:
+        if block at {heist.loc.torch} is soul torch or soul wall torch:
+            set {_nearby} to false
+            loop all players:
+                if world of loop-player is world of {heist.loc.torch}:
+                    if distance between loop-player and {heist.loc.torch} is less than 32:
+                        set {_nearby} to true
+                        stop loop 
+            if {_nearby} is true:
+                set {_x} to x-coord of {heist.loc.torch}
+                set {_y} to y-coord of {heist.loc.torch}
+                set {_z} to z-coord of {heist.loc.torch}
+                execute console command "particle minecraft:soul_fire_flame %{_x}% %{_y}% %{_z}% 0.5 0.5 0.5 0.05 30 force"
+
+# Údržba strážce - zabraňuje duplikaci (Fix pro Entity Cramming)
+every 30 seconds:
+    if {heist.loc.guard} is set:
+        if chunk at {heist.loc.guard} is loaded:
+            set {_count} to 0
+            loop all entities in radius 10 around {heist.loc.guard}:
+                if scoreboard tags of loop-entity contains "HEIST_GUARD":
+                    add 1 to {_count}
+                    if {_count} > 1:
+                        delete loop-entity
+            
+            if {_count} is 0:
+                if {heist.guard_respawn_wait} is not set:
+                    spawn 1 pillager at {heist.loc.guard}
+                    set {_g} to last spawned entity
+                    set display name of {_g} to "{@guard_name}"
+                    set ai of {_g} to false # AI vypneme klasicky
+                    
+                    # --- OPRAVA: Použijeme data merge pro Silent a CanPickUpLoot ---
+                    # Tento příkaz promluví přímo k Minecraftu a nastaví vlastnosti entity
+                    execute console command "data merge entity %uuid of {_g}% {Silent:1b,CanPickUpLoot:0b,PersistenceRequired:1b}"
+                    
+                    add "HEIST_GUARD" to scoreboard tags of {_g}
+
+# --- 2. PŘÍPRAVA ---
+on right click on chest or barrel:
+    if {heist.loc.blueprint} is set:
+        if distance between event-block and {heist.loc.blueprint} < 0.1:
+            cancel event
+            if {heist.cd.blueprint::%player%} is set:
+                set {_waited} to difference between {heist.cd.blueprint::%player%} and now
+                if {_waited} is less than {@cooldown_time}:
+                    set {_rem} to {@cooldown_time}
+                    remove {_waited} from {_rem}
+                    send "{@heist_prefix} &cTyto plány jsi už nedávno studoval. Další za &e%{_rem}%&c." to player
+                    stop
+            send action bar "&eProhledáváš tajnou truhlu..." to player
+            play sound "block.chest.open" with volume 1 at player
+            set {heist.cd.blueprint::%player%} to now
+            wait 1 second
+            give 1 of paper named "{@blueprints_name}" with lore "&7Nákresy tajných chodeb v pyramidě." to player
+            play sound "entity.experience_orb.pickup" at player
+            send "{@heist_prefix} &aZískal jsi plány pyramidy!" to player
+
+on right click on soul torch or soul wall torch:
+    if {heist.loc.torch} is set:
+        if distance between event-block and {heist.loc.torch} < 0.1:
+            cancel event
+            #if {heist.cd.torch::%player%} is set:
+            #    set {_waited} to difference between {heist.cd.torch::%player%} and now
+            #    if {_waited} is less than {@cooldown_time}:
+            #        set {_rem} to {@cooldown_time}
+            #        remove {_waited} from {_rem}
+            #        send "{@heist_prefix} &cTato pochodeň pro tebe ještě není připravena. Další za &e%{_rem}%&c." to player
+            #        stop
+            set {_type} to type of event-block 
+            set {heist.cd.torch::%player%} to now 
+            play sound "block.medium_amethyst_bud.break" with volume 1 at event-block
+            show 10 soul fire flame particles at event-block
+            set block at event-block to air
+            give 1 of soul torch named "{@torch_name}" with lore "&bOchranný předmět proti kletbě." to player
+            send "{@heist_prefix} &bSebral jsi Pochodeň proti kletbě ze sochy!" to player
+
+# --- 4. START HEISTU ---
+
+command /heiststart:
+    trigger:
+        if {heist.loc.cellar} is not set:
+            send "{@heist_prefix} &cChyba: Místo startu heistu není nastaveno adminem!" to player
+            stop
+        if distance between player and {heist.loc.cellar} > 5:
+            send "{@heist_prefix} &cTento příkaz lze použít pouze v tajném sklepě u zadavatele!" to player
+            stop
+        if {heist.in_progress} is set:
+            send "{@heist_prefix} &cPyramida je už právě teď vykrádána!" to player
+            stop
+        if {heist.cd.eye::%player%} is set:
+            set {_waited} to difference between {heist.cd.eye::%player%} and now
+            if {_waited} is less than {@cooldown_time}:
+                set {_rem} to {@cooldown_time}
+                remove {_waited} from {_rem}
+                send "{@heist_prefix} &4Kletba faraona tě stále pronásleduje! Čekej &e%{_rem}%&c." to player
+                stop
+
+        set {_hasTNT} to false
+        set {_hasBeer} to false
+        set {_hasPlans} to false
+        loop all items in player's inventory:
+            if uncolored name of loop-item contains "{@dynamite_name}":
+                set {_hasTNT} to true
+            if uncolored name of loop-item contains "{@beer_name}":
+                set {_hasBeer} to true
+            if uncolored name of loop-item contains "{@blueprints_name}":
+                set {_hasPlans} to true
+        
+        if {_hasTNT} and {_hasBeer} and {_hasPlans} is true:
+            loop all items in player's inventory:
+                if uncolored name of loop-item contains "{@blueprints_name}":
+                    remove 1 of loop-item from player's inventory
+                    stop loop
+            set {heist.active::%player%} to true
+            set {heist.in_progress} to true
+            send "{@heist_prefix} &6&lHEIST ZAČAL! &fJdi k pyramidě a uplať strážce!" to player
+            play sound "entity.wither.spawn" with volume 0.5 to player
+            if {heist.loc.sarcophagus} is set:
+                loop all entities in radius 3 around {heist.loc.sarcophagus}:
+                    if "%type of loop-entity%" contains "item frame":
+                        set item of loop-entity to ender eye named "{@eye_name}" with lore "&5Vzácný artefakt z hrobky."
+                        stop loop
+        else:
+            send "{@heist_prefix} &cChybí ti potřebné vybavení (Dynamit, Pivo nebo Plány)!" to player
+
+# --- 5. INTERAKCE SE STRÁŽÍ ---
+on right click on pillager:
+    if display name of clicked entity is "{@guard_name}":
+        cancel event
+        if {heist.active::%player%} is set:
+            set {_n} to uncolored name of player's tool
+            if {_n} contains "{@beer_name}":
+                remove 1 of player's tool from player
+                send "{@heist_prefix} &eStrážce: &f'Pivo? To si nechám líbit... Jdi dál!'" to player
+                play sound "entity.generic.drink" with volume 1 at player
+                
+                # Strážce zmizí
+                set {heist.guard_respawn_wait} to true
+                delete clicked entity
+                
+                send "{@heist_prefix} &aStrážce odešel. Cesta do pyramidy je volná, ale buď opatrný!" to player
+            else:
+                send "{@heist_prefix} &7Strážce tě nepustí dál bez úplatku." to player
+        else:
+            send "{@heist_prefix} &7Strážce na tebe jen mlčky zírá." to player
+
+# --- 6. ODPÁLENÍ VCHODU DO HROBKY (KLETBA STARTUJE ZDE) ---
+on right click:
+    if {heist.active::%player%} is set:
+        if {heist.loc.wall} is set:
+            if distance between event-block and {heist.loc.wall} < 0.1:
+                set {_n} to uncolored name of player's tool
+                if {_n} contains "{@dynamite_name}":
+                    cancel event
+                    remove 1 of player's tool from player
+                    
+                    send "{@heist_prefix} &c&lNÁLOŽ POLOŽENA! UTEČ Z DOSAHU!" to player
+                    play sound "entity.tnt.primed" at event-block
+                    
+                    wait 3 seconds
+                    create an explosion of force 4 at event-block
+                    set block at {heist.loc.wall} to air
+                    set block at (location 1 block under {heist.loc.wall}) to air
+                    
+                    # --- NOVÝ ODPOČET KLETBY: AKTIVUJE SE VÝBUCHEM ---
+                    send "{@heist_prefix} &7Vnikl jsi do samotné hrobky. Bohové se probouzejí..." to player
+                    wait 15 seconds
+                    
+                    # Kontrola, zda hráč stále žije a heist probíhá
+                    if {heist.active::%player%} is set:
+                        set {heist.curse_active::%player%} to true
+                        send "{@heist_prefix} &5&lPRÁVĚ TĚ DOSTIHLA STAROVĚKÁ KLETBA!" to player
+                        play sound "entity.ghast.scream" with volume 1 and pitch 0.5 at player
+
+# --- 7. SEBRÁNÍ OKA ---
+on right click on entity:
+    if "%type of clicked entity%" contains "item frame":
+        if {heist.active::%player%} is set:
+            if {heist.loc.sarcophagus} is set:
+                # Zde také přidej kontrolu světa, aby to nehazelo chyby:
+                if world of clicked entity is world of {heist.loc.sarcophagus}:
+                    if distance between clicked entity and {heist.loc.sarcophagus} < 2:
+                        set {_i} to item of clicked entity
+                        if {_i} is air:
+                            stop
+                        cancel event
+                        # Sebrání oka
+                        set item of clicked entity to air
+                        set {heist.cd.eye::%player%} to now
+                        give 1 of ender eye named "{@eye_name}" with lore "&5Vzácný artefakt z hrobky." to player
+                        play sound "ui.toast.challenge_complete" with volume 1 at player
+                        send "{@heist_prefix} &d&lMÁŠ FARAONOVO OKO! UTEČ Z PYRAMIDY!" to player
+                        set {heist.has_eye::%player%} to true
+
+# --- 8. KLETBA (Loop) ---
+
+every 3 seconds:
+    loop all players:
+        if {heist.curse_active::%loop-player%} is true:
+            set {_isProtected} to false
+            if uncolored name of loop-player's tool contains "Pochodeň proti kletbě":
+                set {_isProtected} to true
+            if uncolored name of loop-player's offhand tool contains "Pochodeň proti kletbě":
+                set {_isProtected} to true
+                
+            if {_isProtected} is false:
+                apply blindness 1 to loop-player for 5 seconds
+                apply nausea 1 to loop-player for 5 seconds
+                #apply slowness 1 to loop-player for 5 seconds
+                send action bar "&5&l☠ KLETBA TĚ DRAVÍ! POTŘEBUJEŠ POCHODEŇ!" to loop-player
+                play sound "entity.warden.heartbeat" with volume 0.6 and pitch 0.5 to loop-player
+            else:
+                remove blindness from loop-player
+                remove nausea from loop-player
+                send action bar "&b&l✨ Pochodeň tě chrání před kletbou..." to loop-player
+
+# --- 9. KONEC HEISTU ---
+command /heiststop:
+    trigger:
+        if {heist.active::%player%} is not set:
+            send "{@heist_prefix} &cPrávě neprobíhá žádný tvůj heist!" to player
+            stop
+        if {heist.loc.cellar} is not set:
+            stop
+        if distance between player and {heist.loc.cellar} > 10:
+            send "{@heist_prefix} &cMusíš doručit oko zpět do tajného sklepa!" to player
+            stop
+
+        teleport player to location(-1311.5, 59, 1323.3)
+        
+        if {heist.has_eye::%player%} is true:
+            set {_eyeFound} to false
+            loop all items in player's inventory:
+                if uncolored name of loop-item contains "Faraonovo oko":
+                    remove 1 of loop-item from player's inventory
+                    set {_eyeFound} to true
+                    stop loop 
+            
+            if {_eyeFound} is true:
+                loop all items in player's inventory:
+                    if uncolored name of loop-item contains "{@torch_name}":
+                        remove 1 of loop-item from player's inventory
+                execute console command "eco give %player% 50000"
+                send "{@heist_prefix} &a&lDoručil jsi oko! Zadavatel ti vyplatil odměnu." to player
+                play sound "entity.player.levelup" with volume 1 at player
+            else:
+                send "{@heist_prefix} &c&lSELHÁNÍ: &7Oko jsi ztratil cestou!" to player
+
+        heist_GlobalReset(player)
+
+# --- RESET FUNKCE ---
+
+function heist_GlobalReset(p: player):
+    delete {heist.in_progress}
+    delete {heist.guard_respawn_wait}
+    delete {heist.active::%{_p}%}
+    delete {heist.has_eye::%{_p}%}
+    delete {heist.curse_active::%{_p}%}
+    # Reset bloků
+    if {heist.loc.wall} is set:
+        set block at {heist.loc.wall} to chiseled resin bricks
+        set block at (location 1 block under {heist.loc.wall}) to cut red sandstone
+    if {heist.loc.torch} is set:
+        if block at {heist.loc.torch} is air:
+            set block at {heist.loc.torch} to soul torch
+
+# --- OCHRANY ---
+
+on damage:
+    if display name of victim is "{@guard_name}":
+        cancel event
+
+on quit:
+    if {heist.active::%player%} is set:
+        heist_GlobalReset(player)
+
+on death of player:
+    if {heist.active::%victim%} is set:
+        send "{@heist_prefix} &4Zemřel jsi! Heist byl zrušen." to victim
+        set {temp.respawn::%victim%} to location(-1311.5, 59, 1323.3)
+        heist_GlobalReset(victim)
+
+on damage:
+    if "%type of victim%" contains "item frame":
+        if {heist.loc.sarcophagus} is set:
+            if world of victim is world of {heist.loc.sarcophagus}:
+                if distance between victim and {heist.loc.sarcophagus} < 2:
+                    cancel event
+                    if attacker is a player:
+                        send "{@heist_prefix} &cTento artefakt je křehký! Musíš ho sebrat opatrně (Pravým klikem)!" to attacker
+
+# --- ADMIN PŘÍKAZ NA RESET COOLDOWNŮ (Pro testování) ---
+command /heistresetcd <player>:
+    permission: rp.admin
+    trigger:
+        delete {heist.cd.blueprint::%arg-1%}
+        delete {heist.cd.torch::%arg-1%}
+        delete {heist.cd.eye::%arg-1%}
+        send "&a[Heist] Všechny cooldowny pro %arg-1% byly smazány." to player
+command /testguard:
+    permission: rp.admin
+    trigger:
+        if {heist.loc.guard} is set:
+            send "&aLokace strážce je: &f%{heist.loc.guard}%"
+        else:
+            send "&cLokace strážce NENÍ nastavena!"
+command /heistspawnart:
+    permission: rp.admin
+    trigger:
+        delete {heist.guard_respawn_wait}
+        spawn 1 pillager at {heist.loc.guard}
+        set {_g} to last spawned entity
+        set display name of {_g} to "{@guard_name}"
+        set ai of {_g} to false
+        add "HEIST_GUARD" to scoreboard tags of {_g}
+        send "{@heist_prefix} Strážce byl vyvolán."

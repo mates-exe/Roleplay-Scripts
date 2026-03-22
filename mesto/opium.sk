@@ -1,0 +1,181 @@
+# =================================================================
+# SYSTÉM OPIA (Ancient RP - 1.21.1 FIX + 5% BOOM + ANTISPAM)
+# =================================================================
+
+command /opiumfix:
+    permission: rp.admin
+    trigger:
+        delete {makovice.busy::*}
+        delete {opium.processing::*}
+        send "&a[Podsvětí] Systém restartován." to player
+
+# --- 1. NASTAVENÍ OBLASTI ---
+command /setmakovice <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {makovice.pos1} to location of player
+            send "&c[Podsvětí] &aPrvní roh nastaven." to player
+        else if arg-1 is "2":
+            set {makovice.pos2} to location of player
+            send "&c[Podsvětí] &aDruhý roh nastaven." to player
+
+# --- 2. MECHANIKA SKLIZNĚ ---
+on right click on torchflower:
+    if {makovice.pos1} is not set:
+        stop    
+    if location of event-block is within {makovice.pos1} and {makovice.pos2}:
+        if player has permission "rp.straz":
+            send "&c&lZÁKON: &7Jako strážce zákona nemůžeš manipulovat s drogami!" to player
+            stop
+            
+        if name of player's tool contains "Vyorávač semínek":
+            cancel event
+            
+            if {makovice.busy::%player%} is set:
+                stop
+            set {makovice.busy::%player%} to true
+            
+            set {_loc} to location of event-block
+            set block at {_loc} to dead bush
+
+            loop 5 times:
+                if distance between player and event-block > 5:
+                    delete {makovice.busy::%player%}
+                    send action bar "&cPřerušeno - jsi moc daleko." to player
+                    stop
+                send action bar "&4Sklízíš makovici..." to player
+                play sound "block.nether_wart.break" with volume 0.8 and pitch 1.2 at event-block
+                wait 6 ticks
+            
+            delete {makovice.busy::%player%}
+            
+            damage player's tool by 1
+            if player's tool is air:
+                play sound "entity.item.break" at player
+            
+            #set {_loc} to location of event-block
+            #set block at {_loc} to dead bush
+            
+            # --- GIVE SEMÍNEK ---
+            #give 1 of melon seeds named "&r&6Semínka makovic" with lore "&r&7Semínka na výrobu opia" to player
+            
+            #send action bar "&aZískal jsi semínka makovic!" to player
+
+            # --- GIVE SEMÍNEK ---
+            set {_amount} to 1
+            if player has permission "rp.vip":
+                set {_amount} to 2
+
+            give {_amount} of melon seeds named "&r&6Semínka makovic" with lore "&r&7Semínka na výrobu opia" to player
+
+            if {_amount} is 2:
+                send action bar "&6VIP &aZískal jsi &l2× &asemínka makovic!" to player
+            else:
+                send action bar "&aZískal jsi semínka makovic!" to player
+
+            
+            wait 30 seconds
+            if block at {_loc} is dead bush:
+                set block at {_loc} to torchflower
+                play sound "block.crop.break" with volume 0.5 at {_loc}
+
+# --- 3. VÝROBNA OPIA (S ANTISPAMEM) ---
+on right click on brewing stand:
+    if {makovice.pos1} is not set:
+        stop
+    if location of event-block is within {makovice.pos1} and {makovice.pos2}:
+        if player has permission "rp.straz":
+            send "&c&lZÁKON: &7To nemůžeš!" to player
+            cancel event
+            stop
+        cancel event
+        set {_gui} to chest inventory with 3 rows named "Drtič makovic"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+        set slot 10 of {_gui} to 1 of melon seeds named "&r&6Požadavek" with lore "&r&7Měj v batohu Semínka makovic."
+        set slot 13 of {_gui} to cauldron named "&r&b&lSpustit drcení" with lore "&7Kliknutím zpracuješ 1 semínko."
+        set slot 16 of {_gui} to sugar named "&r&fVýsledek"
+        open {_gui} to player
+
+on inventory click:
+    if name of event-inventory is "Drtič makovic":
+        cancel event
+        if index of clicked slot is 13: # Slot 13 je Cauldron
+            
+            # --- 1. KONTROLA ZÁMKU (ANTISPAM) ---
+            if {opium.processing::%player%} is set:
+                send "&cPočkej na dokončení procesu!" to player
+                play sound "block.note_block.bass" at player
+                stop
+
+            # --- 2. HLEDÁNÍ SEMÍNEK ---
+            set {_found} to false
+            loop all items in player's inventory:
+                if {_found} is false:
+                    if loop-item is melon seeds:
+                        if uncolored name of loop-item contains "Semínka makovic" or "Semínka":
+                            # Semínko nalezeno, zamkneme proces a odebereme ho
+                            set {_found} to true
+                            set {opium.processing::%player%} to true
+                            remove 1 from item amount of loop-item
+            
+            if {_found} is true:
+                # --- 3. LOGIKA VÝROBY ---
+                
+                # A) 5% ŠANCE NA VÝBUCH
+                if chance of 5%:
+                    # Čekáme chvilku pro napětí (volitelné, ale lepší pro efekt)
+                    play sound "block.brewing_stand.brew" with volume 0.5 at player
+                    set slot 13 of event-inventory to brewing stand named "&r&c&lPOZOR! PŘEHŘÁTÍ!"
+                    wait 10 ticks
+                    
+                    close player's inventory
+                    delete {opium.processing::%player%} # Odemknout po výbuchu
+                    
+                    play sound "entity.generic.explode" with volume 1.5 at player
+                    show 3 explosion particles at location of player
+                    damage player by 6
+                    send "&c&lBUM! &7Laboratoř ti bouchla do ksichtu!" to player
+                    send "&cSemínko bylo zničeno při explozi." to player
+                    stop
+
+                # B) ÚSPĚŠNÁ VÝROBA
+                play sound "block.grindstone.use" with volume 1 at player
+                set slot 13 of event-inventory to brewing stand named "&r&5Probíhá extrakce..."
+                
+                # Zámek trvá 20 ticků (1 sekunda) - prodlouženo z 10 pro lepší anti-spam
+                wait 20 ticks
+                
+                # Kontrola, zda hráč nezavřel GUI
+                if name of current inventory of player is "Drtič makovic":
+                    set slot 13 of event-inventory to cauldron named "&r&b&lSpustit drcení" with lore "&7Kliknutím zpracuješ 1 semínko."
+                
+                give 1 of sugar named "&r&bOpiový prášek" with lore "&r&7Ilegální droga, která zvyšuje sílu a rychlost." to player
+                
+                send action bar "&b&lOpium bylo úspěšně vyrobeno!" to player
+                play sound "item.bottle.fill_dragons_breath" with volume 1 at player
+                
+                # Odemknutí zámku
+                delete {opium.processing::%player%}
+                
+            else:
+                # Semínka nenalezena (zámek se neaktivoval)
+                send "&cNemáš v inventáři Semínka makovic!" to player
+                play sound "block.chest.locked" with volume 0.5 at player
+
+# --- 4. OŠETŘENÍ ODPOJENÍ ---
+on quit:
+    delete {opium.processing::%player%}
+    delete {makovice.busy::%player%}
+
+# --- ADMIN PŘÍKAZY ---
+command /dejvyoravac:
+    permission: rp.admin
+    trigger:
+        set {_tool} to 1 of iron shovel
+        set name of {_tool} to "&r&bVyorávač semínek"
+        set lore of {_tool} to "&r&2Tento nástroj je používán pro věci v podsvětí!"
+        enchant {_tool} with mending 1
+        give {_tool} to player
+        send "&aObdržel jsi Vyorávač." to player

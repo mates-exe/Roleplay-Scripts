@@ -1,0 +1,170 @@
+# =================================================================
+# SYSTÉM: FARAONOVA HROBKA 2.0 (Hardcore Mines - Ancient RP)
+# =================================================================
+
+options:
+    prefix: &8[&6Hrobka&8] &r
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    hidden: sand named "&e&lPísek" with lore "&7Klikni a odhrň písek..."
+    treasure: gold nugget named "&6&lPoklad" with lore "&7Našel jsi zlato!"
+    bomb: rotten flesh named "&4&lMUMIE" with lore "&cProklela tě a sebrala sázku!"
+    mummy_count: 12 # Zvýšeno na 5 pro větší obtížnost
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /sethrobka:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {hrobka.loc} to location of target block
+            send "{@prefix} &aHra Hrobka nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {hrobka.loc} is set:
+        if location of event-block is {hrobka.loc}:
+            cancel event
+            if {hrobka.active::%player%} is set:
+                send "{@prefix} &cPrávě jsi v hrobce!" to player
+                stop
+            
+            set {hrobka.bet::%player%} to 0
+            openHrobka(player)
+
+# --- 3. GUI ---
+function openHrobka(p: player):
+    set {_gui} to chest inventory with 6 rows named "Faraonova hrobka"
+    loop 54 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+    
+    set {_slots::*} to 10, 11, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30, 31, 32, 37, 38, 39, 40, 41, 46, 47, 48, 49 and 50
+    loop {_slots::*}:
+        set slot loop-value of {_gui} to gray stained glass pane named "&8???"
+    
+    set slot 4 of {_gui} to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{hrobka.bet::%{_p}%}%$"
+    set slot 16 of {_gui} to paper named "&f+ 1 000$"
+    set slot 25 of {_gui} to paper named "&f+ 5 000$"
+    set slot 34 of {_gui} to paper named "&f+ 10 000$"
+    set slot 43 of {_gui} to barrier named "&cResetovat sázku"
+    set slot 7 of {_gui} to sunflower named "&6&l&nZAČÍT KOPAT" with lore "&7Cena: &e%{hrobka.bet::%{_p}%}%$" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Faraonova hrobka":
+        cancel event
+        set {_p} to player
+        
+        # --- FÁZE 1: SÁZENÍ ---
+        if {hrobka.active::%{_p}%} is not set:
+            if index of clicked slot is 16, 25 or 34:
+                set {_add} to 1000 if index of clicked slot is 16
+                set {_add} to 5000 if index of clicked slot is 25
+                set {_add} to 10000 if index of clicked slot is 34
+                add {_add} to {hrobka.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+            
+            if clicked slot is 43:
+                set {hrobka.bet::%{_p}%} to 0
+                play sound "block.lava.extinguish" at {_p}
+                
+            set slot 4 of event-inventory to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{hrobka.bet::%{_p}%}%$"
+            set slot 7 of event-inventory to sunflower named "&6&l&nZAČÍT KOPAT" with lore "&7Cena: &e%{hrobka.bet::%{_p}%}%$" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+
+            if clicked slot is 7:
+                if {hrobka.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit peníze!" to {_p}
+                    stop
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš Kasino Žeton!" to {_p}
+                    stop
+                if {_p}'s balance < {hrobka.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš dostatek peněz!" to {_p}
+                    stop
+                
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{hrobka.bet::%{_p}%}%"
+                payKasinoShare({_p})
+                
+                set {hrobka.active::%{_p}%} to true
+                set {hrobka.win_count::%{_p}%} to 0
+                set {hrobka.mult::%{_p}%} to 0.0 # START NA NULE
+                
+                set {_slots::*} to 10, 11, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30, 31, 32, 37, 38, 39, 40, 41, 46, 47, 48, 49 and 50
+                clear {hrobka.bombs::%{_p}%::*}
+                loop {@mummy_count} times:
+                    set {_b} to random element out of {_slots::*}
+                    add {_b} to {hrobka.bombs::%{_p}%::*}
+                    remove {_b} from {_slots::*}
+                
+                loop 54 times:
+                    set slot (loop-number - 1) of event-inventory to black stained glass pane named " "
+                loop 10, 11, 12, 13, 14, 19, 20, 21, 22, 23, 28, 29, 30, 31, 32, 37, 38, 39, 40, 41, 46, 47, 48, 49 and 50:
+                    set slot loop-value of event-inventory to {@hidden}
+                
+                updateHrobkaInfo({_p}, event-inventory)
+
+        # --- FÁZE 2: HLEDÁNÍ ---
+        else if {hrobka.active::%{_p}%} is true:
+            set {_s} to index of clicked slot
+            if clicked slot is {@hidden}:
+                
+                loop {hrobka.bombs::%{_p}%::*}:
+                    if loop-value is {_s}:
+                        set slot {_s} of event-inventory to {@bomb}
+                        play sound "entity.ghast.scream" with volume 1 and pitch 0.5 at {_p}
+                        send "{@prefix} &4&lMUMIE! &7Proklela tě a přišel jsi o všechno." to {_p}
+                        delete {hrobka.active::%{_p}%}
+                        wait 2 seconds
+                        close inventory of {_p}
+                        stop
+
+                add 1 to {hrobka.win_count::%{_p}%}
+                
+                # --- NOVÁ MATEMATIKA NÁSOBITELE (HARDCORE) ---
+                if {hrobka.win_count::%{_p}%} is 1:
+                    set {hrobka.mult::%{_p}%} to 0.7 # První poklad = stále ztráta 30 %
+                else if {hrobka.win_count::%{_p}%} is 2:
+                    set {hrobka.mult::%{_p}%} to 1.1 # Druhý poklad = mírný zisk 10 %
+                else if {hrobka.win_count::%{_p}%} is 3:
+                    set {hrobka.mult::%{_p}%} to 1.6 # Třetí poklad
+                else:
+                    add 0.6 to {hrobka.mult::%{_p}%} # Každý další
+                
+                set slot {_s} of event-inventory to {@treasure}
+                play sound "block.stone.break" with volume 0.5 at {_p}
+                updateHrobkaInfo({_p}, event-inventory)
+                
+            if clicked slot is 7:
+                if {hrobka.win_count::%{_p}%} <= 0:
+                    send "{@prefix} &cJeště jsi nic nenašel!" to {_p}
+                    stop
+                
+                set {_final} to floor({hrobka.bet::%{_p}%} * {hrobka.mult::%{_p}%})
+                execute console command "eco give %{_p}% %{_final}%"
+                send "{@prefix} &a&lVYBRÁNO! &fOpouštíš hrobku s &e%{_final}%$" to {_p}
+                play sound "entity.experience_orb.pickup" at {_p}
+                delete {hrobka.active::%{_p}%}
+                close inventory of {_p}
+
+# --- 5. POMOCNÉ FUNKCE ---
+function updateHrobkaInfo(p: player, inv: inventory):
+    set {_win} to floor({hrobka.bet::%{_p}%} * {hrobka.mult::%{_p}%})
+    set slot 4 of {_inv} to paper named "&e&lSTAV PRŮZKUMU" with lore "&7Aktuální výhra: &a%{_win}%$" and "&7Násobitel: &b%{hrobka.mult::%{_p}%}%x"
+    
+    if {hrobka.win_count::%{_p}%} > 0:
+        set slot 7 of {_inv} to gold ingot named "&a&lVYBRÁNO VÝHRU" with lore "&7Kliknutím ukončíš hru" and "&7a vezmeš si &e%{_win}%$"
+    else:
+        set slot 7 of {_inv} to barrier named "&c&lNIC JSI NENAŠEL" with lore "&7Musíš najít aspoň jeden" and "&7poklad, abys mohl odejít."
+
+on inventory close:
+    if name of event-inventory is "Faraonova hrobka":
+        if {hrobka.active::%player%} is true:
+            wait 1 tick
+            open event-inventory to player
+            send action bar "&c&lKletba tě nepustí, dokud nedokopeš nebo nevybereš!" to player
+
+on quit:
+    delete {hrobka.active::%player%}

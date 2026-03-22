@@ -1,0 +1,184 @@
+# =================================================================
+# SYSTÉM FARMY A PEKÁRNY (Opraveno pro 1.21.1 - No JSON bug)
+# =================================================================
+
+# --- 1. NASTAVENÍ OBLASTI ---
+command /setpole <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {farm.pos1} to location of player
+            send "&6[Farma] &aPrvní roh pole nastaven." to player
+        else if arg-1 is "2":
+            set {farm.pos2} to location of player
+            send "&6[Farma] &aDruhý roh pole nastaven." to player
+
+# --- 2. SKLIZEŇ OBILÍ ---
+on right click on wheat:
+    if {farm.pos1} is not set:
+        stop
+    if location of event-block is within {farm.pos1} and {farm.pos2}:
+        if name of player's tool contains "Motyčka na obilí":
+            if age of event-block is 7:
+                cancel event 
+                set age of event-block to 0
+
+                # --- POŠKOZENÍ NÁSTROJE ---
+                damageTool(player)
+
+                play sound "block.crop.break" with volume 0.8 and pitch 1.2 at event-block
+                play sound "item.hoe.till" with volume 0.5 and pitch 1 at event-block
+                
+                set {_loc} to event-block
+                execute console command "/particle composter %x-coord of {_loc}% %y-coord of {_loc}% %z-coord of {_loc}% 0.3 0.3 0.3 0.05 15"
+                
+                # OPRAVA GIVE: Nativní Skript syntaxe
+                give 1 of wheat named "&r&6Obilí" with lore "&r&7Lze využít k výrobě mouky" to player
+                send action bar "&6+1 Obilí" to player
+            else:
+                cancel event
+                send action bar "&cObilí ještě nedozrálo!" to player
+
+# --- 3. OTEVÍRÁNÍ STANIC ---
+on right click on anvil:
+    if {farm.pos1} is not set:
+        stop
+    if location of event-block is within {farm.pos1} and {farm.pos2}:
+        cancel event
+        set {_gui} to chest inventory with 3 rows named "Starý mlýn"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to gray stained glass pane named " "
+        set slot 13 of {_gui} to heavy weighted pressure plate named "&f&lUMLÍT OBILÍ" with lore "&r&7Umele max. 10ks najednou."
+        open {_gui} to player
+
+on right click on cauldron:
+    if {farm.pos1} is not set:
+        stop
+    if location of event-block is within {farm.pos1} and {farm.pos2}:
+        cancel event
+        set {_gui} to chest inventory with 3 rows named "Míchací mísa"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to blue stained glass pane named " "
+        set slot 13 of {_gui} to water bucket named "&b&lUHNÁCAT TĚSTO" with lore "&r&7Zpracuje max. 10ks mouky."
+        open {_gui} to player
+
+on right click on mangrove trapdoor:
+    if {farm.pos1} is not set:
+        stop
+    if location of event-block is within {farm.pos1} and {farm.pos2}:
+        cancel event
+        set {_gui} to chest inventory with 3 rows named "Rozpálená pec"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+        set slot 10 and 11 and 12 and 14 and 15 and 16 of {_gui} to iron bars named "&cMřížka pece"
+        set slot 13 of {_gui} to campfire named "&6&lUPÉCT CHLEBA" with lore "&r&7Upeče max. 10ks chleba."
+        open {_gui} to player
+
+# --- 4. ZPRACOVÁNÍ V GUI ---
+on inventory click:
+    # --- A) MLÝN ---
+    if name of event-inventory is "Starý mlýn":
+        cancel event
+        if index of clicked slot is 13:
+            set {_limit} to 10
+            set {_processed} to 0
+            loop all items in player's inventory:
+                if {_processed} >= {_limit}:
+                    stop loop
+                if loop-item is wheat:
+                    if uncolored name of loop-item contains "Obilí":
+                        set {_stackSize} to item amount of loop-item
+                        set {_spaceLeft} to {_limit} - {_processed}
+                        if {_stackSize} <= {_spaceLeft}:
+                            add {_stackSize} to {_processed}
+                            set loop-item to air
+                        else:
+                            add {_spaceLeft} to {_processed}
+                            remove {_spaceLeft} from item amount of loop-item
+            if {_processed} > 0:
+                send action bar "&f&lMleju %{_processed}% pytlů obilí..." to player
+                play sound "block.grindstone.use" with volume 1 and pitch 0.6 at player
+                execute console command "/particle cloud %x-coord of player% %y-coord of player% %z-coord of player% 0.5 1 0.5 0.1 20"
+                wait 20 ticks
+                # OPRAVA GIVE: Mouka
+                give {_processed} of bone meal named "&r&6Mouka" with lore "&r&7Lze využít k výrobě těsta" to player
+                send action bar "&aZískal jsi mouku!" to player
+            else:
+                send "&cNemáš u sebe žádné Obilí!" to player
+                close player's inventory
+
+    # --- B) MÍCHÁNÍ ---
+    if name of event-inventory is "Míchací mísa":
+        cancel event
+        if index of clicked slot is 13:
+            set {_limit} to 10
+            set {_processed} to 0
+            loop all items in player's inventory:
+                if {_processed} >= {_limit}:
+                    stop loop
+                if loop-item is bone meal:
+                    if uncolored name of loop-item contains "Mouka":
+                        set {_stackSize} to item amount of loop-item
+                        set {_spaceLeft} to {_limit} - {_processed}
+                        if {_stackSize} <= {_spaceLeft}:
+                            add {_stackSize} to {_processed}
+                            set loop-item to air
+                        else:
+                            add {_spaceLeft} to {_processed}
+                            remove {_spaceLeft} from item amount of loop-item
+            if {_processed} > 0:
+                send action bar "&b&lMíchám těsto (%{_processed}%ks)..." to player
+                play sound "block.honey_block.step" with volume 1 and pitch 1 at player
+                wait 20 ticks
+                # OPRAVA GIVE: Těsto
+                give {_processed} of baked potato named "&r&6Těsto na chleba" with lore "&r&7Lze upéct pro získání chleba" to player
+                send action bar "&aTěsto je hotové!" to player
+            else:
+                send "&cNemáš u sebe žádnou Mouku!" to player
+                close player's inventory
+
+    # --- C) PEC ---
+    if name of event-inventory is "Rozpálená pec":
+        cancel event
+        if index of clicked slot is 13:
+            set {_limit} to 10
+            set {_processed} to 0
+            loop all items in player's inventory:
+                if {_processed} >= {_limit}:
+                    stop loop
+                if loop-item is baked potato:
+                    if uncolored name of loop-item contains "Těsto":
+                        set {_stackSize} to item amount of loop-item
+                        set {_spaceLeft} to {_limit} - {_processed}
+                        if {_stackSize} <= {_spaceLeft}:
+                            add {_stackSize} to {_processed}
+                            set loop-item to air
+                        else:
+                            add {_spaceLeft} to {_processed}
+                            remove {_spaceLeft} from item amount of loop-item
+            if {_processed} > 0:
+                set slot 13 of event-inventory to campfire named "&c&lPEČE SE (%{_processed}%ks)..."
+                play sound "block.fire.ambient" with volume 1 at player
+                wait 10 ticks
+                execute console command "/particle smoke %x-coord of player% %y-coord of player% %z-coord of player% 0.3 0.5 0.3 0.05 10"
+                wait 10 ticks
+                # OPRAVA GIVE: Chleba
+                give {_processed} of bread named "&r&6Chleba" with lore "&r&7Základ každého dobrého jídla!" to player
+                play sound "entity.player.levelup" with volume 0.5 and pitch 2 at player
+                send action bar "&6&lUpekl jsi %{_processed}% bochníků chleba!" to player
+            else:
+                send "&cNemáš u sebe žádné Těsto!" to player
+                close player's inventory
+
+# --- 5. PŘÍKAZY ---
+command /dejmotycku:
+    permission: rp.admin
+    trigger:
+        # OPRAVA GIVE: Nástroj s enchanty
+        give 1 of iron hoe of mending 1 and unbreaking 3 named "&r&a&lMotyčka na obilí" with lore "&r&9Motyčka na pořádně penízky" to player
+on consume:
+    if uncolored name of event-item contains "Těsto":
+        cancel event
+        send action bar "&cSyrové těsto se nedá jíst!" to player
+        play sound "entity.villager.no" with volume 1 and pitch 1.2 at player
+

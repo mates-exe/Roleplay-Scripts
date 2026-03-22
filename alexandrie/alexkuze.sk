@@ -1,0 +1,107 @@
+# =================================================================
+# KOŽELUŽSTVÍ 2.3 - FIX POČTU (MAX 2 KRÁVY)
+# =================================================================
+
+options:
+    raw_leather: &cSurová kůže
+    wet_leather: &bMokrá kůže
+    final_leather: &6Vydělaná kůže
+
+# --- 1. NASTAVENÍ A ČISTÝ SPAWN ---
+command /setkozcow:
+    permission: rp.admin
+    trigger:
+        set {koz.cow_spawn} to location of player
+        
+        # Totální čistka: Smažeme VŠECHNY označené krávy na celém serveru
+        loop all cows:
+            if loop-cow has scoreboard tag "KOZ_COW":
+                delete loop-cow
+        
+        # Čerstvý spawn přesně 2 kusů
+        loop 2 times:
+            spawn cow at {koz.cow_spawn}
+            add "KOZ_COW" to scoreboard tags of last spawned cow
+            set last spawned cow's display name to "&6Chovná kráva" # Pojmenujeme je pro přehled
+        
+        send "&6[Koželužna] &fOhrada vyčištěna a spawnuty 2 nové krávy." to player
+
+# --- 2. KONTROLA ÚTĚKU ---
+every 2 seconds:
+    if {koz.cow_spawn} is set:
+        loop all cows:
+            if loop-cow has scoreboard tag "KOZ_COW":
+                if distance between loop-cow and {koz.cow_spawn} > 5:
+                    teleport loop-cow to {koz.cow_spawn}
+
+# --- 3. INTELIGENTNÍ RESPRAWN (MAX 2) ---
+on death of cow:
+    if victim has scoreboard tag "KOZ_COW":
+        clear drops
+        drop 1 of leather named "{@raw_leather}" with lore "&7Smradlavá kůže od krve." at event-location
+        
+        # Počkáme na respawn
+        wait 30 seconds
+        if {koz.cow_spawn} is set:
+            
+            # KONTROLA POČTU: Spočítáme, kolik jich v ohradě zbývá
+            set {_current_count} to 0
+            loop all cows in radius 10 around {koz.cow_spawn}:
+                if loop-cow has scoreboard tag "KOZ_COW":
+                    add 1 to {_current_count}
+            
+            # Narodí se nová jen tehdy, pokud je tam méně než 2
+            if {_current_count} < 2:
+                spawn cow at {koz.cow_spawn}
+                add "KOZ_COW" to scoreboard tags of last spawned cow
+                set last spawned cow's display name to "&6Chovná kráva"
+
+# --- MANUÁLNÍ ČISTKA (Kdyby se jich tam zas objevilo víc) ---
+command /kozkill:
+    permission: rp.admin
+    trigger:
+        loop all cows:
+            if loop-cow has scoreboard tag "KOZ_COW":
+                delete loop-cow
+        send "&cVšechny chovné krávy byly smazány." to player
+
+# --- Zbytek skriptu (kotlík, sušení) zůstává stejný ---
+
+# --- 3. ČIŠTĚNÍ (KOTLÍK) ---
+# Používáme obecnější detekci cauldronu pro lepší funkčnost
+on right click on water cauldron:
+    if {work.koz.pos1} is set:
+        if location of event-block is within {work.koz.pos1} and {work.koz.pos2}:
+            if name of player's tool is "{@raw_leather}":
+                cancel event
+                remove 1 of player's tool from player
+                play sound "entity.fishing_bobber.splash" at event-block
+                send action bar "&bPereš kůži v čisté vodě..." to player
+                wait 1 second
+                give 1 of leather named "{@wet_leather}" with lore "&7Čistá, ale úplně mokrá." to player
+
+# --- 4. SUŠENÍ (CAMPFIRE) ---
+on right click on campfire or soul campfire:
+    if {work.koz.pos1} is set:
+        if location of event-block is within {work.koz.pos1} and {work.koz.pos2}:
+            if name of player's tool is "{@wet_leather}":
+                cancel event
+                if {koz.drying::%player%} is set:
+                    stop
+                set {koz.drying::%player%} to true
+                remove 1 of player's tool from player
+                play sound "block.fire.ambient" at event-block
+                loop 5 times:
+                    set {_p} to loop-number * 2
+                    set {_bar} to ""
+                    loop {_p} times:
+                        set {_bar} to "%{_bar}%&6|"
+                    send action bar "&6Sušení kůže: [%{_bar}%&r]" to player
+                    wait 0.2 second
+                give 1 of leather named "{@final_leather}" with lore "&7Kvalitní vysušená kůže." to player
+                play sound "entity.item.pickup" at player
+                send action bar "&a&lKůže byla úspěšně vysušena!" to player
+                delete {koz.drying::%player%}
+
+on quit:
+    delete {koz.drying::%player%}

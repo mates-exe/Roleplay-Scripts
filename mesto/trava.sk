@@ -1,0 +1,221 @@
+# =================================================================
+# SYSTÉM DROG: MĚSTSKÁ TRÁVA (VÝROBA A ÚČINKY)
+# =================================================================
+
+options:
+    paper_name: &fKvalitní papír
+    weed_flower: &aKvět trávy
+    weed_crushed: &2Nadrcená tráva
+    joint_name: &6&lKvalitní Joint
+    regen_time: 120 seconds
+
+# --- 1. NASTAVENÍ LOKACÍ ---
+command /setrakosi <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mesto.rakosi.pos1} to location of player
+            send "&2[Rákosí] &f1. bod nastaven."
+        else if arg-1 is "2":
+            set {mesto.rakosi.pos2} to location of player
+            send "&2[Rákosí] &f2. bod nastaven."
+
+command /settrava <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mesto.trava.pos1} to location of player
+            send "&a[Tráva] &f1. bod nastaven."
+        else if arg-1 is "2":
+            set {mesto.trava.pos2} to location of player
+            send "&a[Tráva] &f2. bod nastaven."
+
+# --- 2. SBĚR RÁKOSÍ (S inteligentní regenerací kořene) ---
+on left click on sugar cane:
+    if {mesto.rakosi.pos1} is set:
+        if location of event-block is within {mesto.rakosi.pos1} and {mesto.rakosi.pos2}:
+            cancel event
+            set {_baseLoc} to location of event-block
+            
+            # Budeme kontrolovat blok, na který hráč klikl, a všechny nad ním (max 5)
+            set {_blocksProcessed} to 0
+            
+            loop 5 times:
+                set {_checkLoc} to location (loop-number - 1) blocks above {_baseLoc}
+                
+                if block at {_checkLoc} is sugar cane:
+                    # 1. Přidat do počítadla hráče
+                    add 1 to {rakosi.count::%uuid of player%}
+                    add 1 to {_blocksProcessed}
+                    
+                    # 2. Kontrola na výrobu papíru (každý 3. kus)
+                    if {rakosi.count::%uuid of player%} >= 3:
+                        set {rakosi.count::%uuid of player%} to 0
+                        give 1 of paper named "{@paper_name}" with lore "&7Ručně vylisovaný z rákosí." to player
+                        send action bar "&f&lVyrobil jsi Kvalitní papír!" to player
+                    
+                    # 3. LOGIKA REGENERACE:
+                    # Uložíme si, co je pod aktuálním blokem rákosí, než ho smažeme
+                    set {_under} to block below {_checkLoc}
+                    
+                    # Smažeme rákosí
+                    set block at {_checkLoc} to air
+                    
+                    # Regeneraci spustíme POUZE pokud blok pod rákosím byl Grass Block
+                    # (Tím zajistíme, že se obnoví jen ten nejspodnější blok na zemi)
+                    if {_under} is grass block:
+                        handleSugarRegen({_checkLoc})
+                    # Pokud chceš, aby to rostlo i na písku/hlíně, použij:
+                    # if {_under} is grass block or sand or dirt:
+                else:
+                    # Jakmile narazíme na něco, co není rákos, končíme se sloupcem
+                    stop loop
+            
+            # Efekty po sklizni
+            if {_blocksProcessed} > 0:
+                play sound "block.grass.break" with volume 0.5 at {_baseLoc}
+                if {rakosi.count::%uuid of player%} > 0:
+                    send action bar "&7Sbíráš rákosí... (%{rakosi.count::%uuid of player%}%/3)" to player
+
+# --- FUNKCE PRO REGENERACI ---
+function handleSugarRegen(loc: location):
+    wait {@regen_time}
+    # Pojistka: Pokud tam mezitím někdo něco postavil, nic nedělej
+    if block at {_loc} is air:
+        set block at {_loc} to sugar cane
+
+# --- 3. SBĚR KVĚTU TRÁVY (STABILNÍ JEDNOBLOKOVÁ VERZE) ---
+on left click on fern:
+    if {mesto.trava.pos1} is set:
+        if location of event-block is within {mesto.trava.pos1} and {mesto.trava.pos2}:
+            cancel event
+            set {_loc} to location of event-block
+            
+            # Sběr
+            give 1 of fern named "{@weed_flower}" with lore "&7Surový květ, který je třeba nadrtit." to player
+            send action bar "&aUtrhl jsi květ trávy!" to player
+            play sound "block.sweet_berry_bush.pick" with volume 0.8 at {_loc}
+            
+            # Sklizeň (zmizí)
+            set block at {_loc} to short grass
+            
+            # Regenerace (vrátí se na stejné místo)
+            wait {@regen_time}
+            set block at {_loc} to fern
+            play sound "block.grass.place" with volume 0.5 at {_loc}
+
+
+# --- 4. DRCENÍ (V KVĚTINÁČI V REGIONU TRAVA) ---
+on right click on flower pot:
+    if {mesto.trava.pos1} is set:
+        if location of event-block is within {mesto.trava.pos1} and {mesto.trava.pos2}:
+            if name of player's tool contains "tráv":
+                cancel event
+                remove 1 of player's tool from player
+                
+                play sound "block.grindstone.use" at event-block
+                send action bar "&2Drtíš květ v hmoždíři..." to player
+
+                wait 1 second
+                
+                give 1 of pumpkin seeds named "{@weed_crushed}" with lore "&7Nadrcený materiál připravený k balení." to player
+                play sound "item.bottle.fill" at player
+
+# --- 5. BALENÍ (FLETCHING TABLE GUI) ---
+on right click on fletching table:
+    if {mesto.trava.pos1} is set:
+        if location of event-block is within {mesto.trava.pos1} and {mesto.trava.pos2}:
+            cancel event
+            
+            set {_gui} to chest inventory with 3 rows named "Balení Jointů"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to gray stained glass pane named " "
+            
+            # Jen informativní ikony (nelze je vyndat díky cancel event níže)
+            set slot 10 of {_gui} to paper named "{@paper_name}" with lore "&ePotřebuješ: 1ks"
+            set slot 12 of {_gui} to 2 of pumpkin seeds named "{@weed_crushed}" with lore "&ePotřebuješ: 2ks"
+            set slot 15 of {_gui} to oak boat named "&6&lUVALIT JOINTA" with lore "&7Klikni pro výrobu."
+            
+            open {_gui} to player
+
+# --- LOGIKA GUI (ZDE JE OPRAVA ROZKRÁDÁNÍ) ---
+on inventory click:
+    if name of event-inventory is "Balení Jointů":
+        cancel event # <--- KLÍČOVÉ: Toto okamžitě zablokuje jakékoliv braní itemů z GUI
+        
+        # Pokud klikne na loďku (tlačítko balení)
+        if index of clicked slot is 15:
+            
+            # Ochrana proti spamování (aby neklikl 10x během čekání)
+            if {rolling_process::%player%} is set:
+                stop
+            
+            # Definice přesných itemů pro kontrolu
+            set {_paper} to paper named "{@paper_name}"
+            set {_weed} to pumpkin seeds named "{@weed_crushed}"
+            
+            # Kontrola surovin v inventáři hráče
+            if player has 1 of {_paper}:
+                if player has 2 of {_weed}:
+                    
+                    # --- START PROCESU ---
+                    set {rolling_process::%player%} to true
+                    
+                    # Odebereme suroviny hned (prevence bugování)
+                    remove 1 of {_paper} from player
+                    remove 2 of {_weed} from player
+                    
+                    # Animace v GUI
+                    set slot 15 of event-inventory to orange stained glass pane named "&6Balím..."
+                    play sound "block.suspicious_sand.break" with volume 1 and pitch 1 at player
+                    
+                    wait 2 seconds
+                    
+                    # Kontrola, zda má stále otevřené správné menu
+                    if name of player's current inventory is "Balení Jointů":
+                        set slot 15 of event-inventory to lime stained glass pane named "&a&lHOTOVO!"
+                    
+                    # Výsledek
+                    give 1 of lever named "{@joint_name}" with lore "&7Domácí výroba." and "&dÚčinek: &7Pohoda a hlad." to player
+                    play sound "entity.experience_orb.pickup" at player
+                    send action bar "&a&lUvalil jsi Kvalitního jointa!" to player
+                    
+                    delete {rolling_process::%player%}
+                    
+                else:
+                    send "&cNemáš dost nadrcené trávy (2ks)!" to player
+                    play sound "block.chest.locked" at player
+            else:
+                send "&cNemáš papír!" to player
+                play sound "block.chest.locked" at player
+
+# Pojistka pro případ, že hráč zavře menu nebo se odpojí
+on inventory close:
+    if name of event-inventory is "Balení Jointů":
+        delete {rolling_process::%player%}
+
+on quit:
+    delete {rolling_process::%player%}
+
+# # --- 6. ÚČINKY (Kouření) ---
+# on right click:
+#     if uncolored name of player's tool is "Kvalitní Joint":
+#         cancel event
+#         remove 1 of player's tool from player
+#         
+#         send "&6&lZapálil jsi jointa a hluboce se nadechl..." to player
+#         play sound "entity.generic.burn" at player
+#         
+#         # Animace kouře
+#         loop 10 times:
+#             show cloud particles at location 1.5 meters above player
+#             wait 0.5 second
+#             
+#         apply nausea 1 to player for 40 seconds
+#         apply slow falling 1 to player for 30 seconds
+#         apply resistance 2 to player for 60 seconds
+#         apply slowness 1 to player for 30 seconds
+#         
+#         # Hlad (munchies)
+#         set food level of player to 4
+#         send "&e[!] Dostal jsi hrozný hlad..." to player

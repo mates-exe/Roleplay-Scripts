@@ -1,0 +1,35 @@
+# =================================================================
+# GLOBÁLNÍ FUNKCE: POŠKOZENÍ NÁSTROJE
+# =================================================================
+
+function damageTool(p: player):
+    set {_tool} to tool of {_p}
+    
+    # Pokud hráč nic nedrží, nepokračujeme
+    if {_tool} is air:
+        stop
+        
+    # --- VÝPOČET UNBREAKING (Nezlomnost) ---
+    set {_unb} to level of unbreaking of {_tool}
+    
+    # Standardní Minecraft vzorec pro šanci na poškození: 100 / (level + 1)
+    if chance of (100 / ({_unb} + 1))%:
+        
+        # Zvýšíme poškození o 1
+        damage {_tool} by 1
+        
+        # --- KONTROLA ZNIČENÍ ---
+        # Pokud aktuální poškození dosáhne nebo překročí max. životnost
+        if damage of {_tool} >= max durability of {_tool}:
+            
+            # Efekt rozbití
+            play sound "entity.item.break" with volume 1 and pitch 1 at {_p}
+            
+            # Odstranění předmětu z ruky
+            set tool of {_p} to air
+            
+            # Upozornění pro hráče
+            send action bar "&4&lTvůj nástroj se zlomil!" to {_p}
+        else:
+            # Volitelné: Update itemu v ruce (někdy Skript potřebuje postrčit, aby se UI obnovilo)
+            set tool of {_p} to {_tool}

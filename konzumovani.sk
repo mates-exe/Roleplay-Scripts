@@ -1,0 +1,140 @@
+# =====================================================
+# UNIVERZÁLNÍ UŽITÍ PRODUKTŮ - AKTUALIZOVÁNO (JOINT)
+# =====================================================
+
+on consume:
+    set {_item} to event-item
+    if canConsume(player, {_item}) is false:
+        cancel event
+        stop
+    
+    runConsumeEffects(player, {_item})
+
+on right click:
+    if event-item is air:
+        stop
+    if player is eating:
+        stop
+    
+    if canUse(player, event-item) is false:
+        stop
+    
+    cancel event
+    runUseEffects(player, event-item)
+
+# =====================================================
+# COOLDOWN SYSTÉM
+# =====================================================
+
+function hasCooldown(p: player, key: text, cd: timespan) :: boolean:
+    if {drug.cd::%{_key}%::%uuid of {_p}%} is set:
+        set {_diff} to difference between now and {drug.cd::%{_key}%::%uuid of {_p}%}
+        if {_diff} < {_cd}:
+            set {_left} to {_cd} - {_diff}
+            send action bar "&cMusíš ještě počkat %{_left}%!" to {_p}
+            return true
+    set {drug.cd::%{_key}%::%uuid of {_p}%} to now
+    return false
+
+# =====================================================
+# KONTROLY (Okamžitý return)
+# =====================================================
+
+function canConsume(p: player, i: item) :: boolean:
+    set {_name} to uncolored name of {_i}
+    if {_name} contains "Víno":
+        if hasCooldown({_p}, "vino", 30 seconds) is true:
+            return false
+    if {_name} is "Med":
+        if hasCooldown({_p}, "med", 10 seconds) is true:
+            return false
+    return true
+
+function canUse(p: player, i: item) :: boolean:
+    set {_name} to uncolored name of {_i}
+    if {_name} contains "Opiov":
+        if hasCooldown({_p}, "opium", 10 seconds) is true:
+            return false
+        return true
+    if {_name} contains "Esence š":
+        if hasCooldown({_p}, "mandragora", 30 seconds) is true:
+            return false
+        return true
+    # --- PŘIDÁNO: KONTROLA JOINTA ---
+    if {_name} contains "Kvalitní Joint":
+        if hasCooldown({_p}, "joint", 30 seconds) is true:
+            return false
+        return true
+    return false
+
+# =====================================================
+# EFEKTY A AKCE (Zde mohou být waity)
+# =====================================================
+
+function runConsumeEffects(p: player, i: item):
+    set {_name} to uncolored name of {_i}
+    
+    if {_name} contains "Víno":
+        wait 1 tick
+        send action bar "&d🍷 Cítíš, jak ti víno stoupá do hlavy..." to {_p}
+        play sound "entity.player.burp" with volume 1 and pitch 0.8 at {_p}
+        apply nausea 2 to {_p} for 20 seconds
+        apply blindness 1 to {_p} for 6 seconds
+        apply slowness 1 to {_p} for 15 seconds
+
+    if {_name} is "Med":
+        wait 1 tick
+        remove 1 glass bottle from {_p}
+        add 6 to food level of {_p}
+        apply saturation 1 to {_p} for 8 seconds
+
+function runUseEffects(p: player, i: item):
+    set {_name} to uncolored name of {_i}
+
+    if {_name} contains "Opiov":
+        remove 1 of {_i} from inventory of {_p}
+        apply nausea 1 to {_p} for 25 seconds
+        apply slowness 2 to {_p} for 20 seconds
+
+    if {_name} contains "Esence":
+        remove 1 of {_i} from inventory of {_p}
+        send title "&5☠ MANDRAGORA ☠" with subtitle "&dRealita se rozpadá..." to {_p}
+        play sound "entity.ender_dragon.growl" with volume 0.6 and pitch 0.5 at {_p}
+        apply nausea 3 to {_p} for 30 seconds
+        apply blindness 1 to {_p} for 8 seconds
+        apply levitation 1 to {_p} for 3 seconds
+        wait 3 seconds
+        apply strength 2 to {_p} for 20 seconds
+        apply speed 2 to {_p} for 20 seconds
+        apply resistance 1 to {_p} for 20 seconds
+        chance of 25%:
+            damage {_p} by 6 hearts
+            send "&cTělo nezvládá sílu Mandragory!" to {_p}
+        chance of 10%:
+            kill {_p}
+            broadcast "&5☠ %name of {_p}% nezvládl účinky Mandragory."
+        wait 20 seconds
+        apply weakness 1 to {_p} for 30 seconds
+        apply slowness 1 to {_p} for 30 seconds
+        send "&8Po odeznění účinku jsi naprosto vyčerpaný..." to {_p}
+
+    # --- PŘIDÁNO: EFEKTY JOINTA ---
+    if {_name} contains "Kvalitní Joint":
+        remove 1 of {_i} from inventory of {_p}
+        
+        send "&6&lZapálil jsi jointa a hluboce se nadechl..." to {_p}
+        play sound "entity.generic.burn" at {_p}
+        
+        # Animace kouře (Trvá 5 sekund)
+        loop 10 times:
+            show cloud particles at location 1.5 meters above {_p}
+            wait 0.5 second
+            
+        apply nausea 1 to {_p} for 40 seconds
+        apply slow falling 1 to {_p} for 30 seconds
+        apply resistance 2 to {_p} for 60 seconds
+        apply slowness 1 to {_p} for 30 seconds
+        
+        # Hlad (munchies)
+        set food level of {_p} to 4
+        send "&e[!] Dostal jsi hrozný hlad..." to {_p}

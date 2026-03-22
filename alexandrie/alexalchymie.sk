@@ -1,0 +1,95 @@
+# =================================================================
+# ALCHYMIE 2.0 - ZAHRÁDKA A SBĚR BYLIN
+# =================================================================
+
+options:
+    herb_red: &cDivoký mák
+    herb_blue: &bModrá orchidej
+    herb_yellow: &ePouštní pampeliška
+    crushed_herb: &aDrcená bylinná směs
+
+
+# --- 2. SBĚR BYLINEK V ZAHRÁDCE ---
+on right click on poppy or blue orchid or dandelion:
+    # Kontrola, zda je bylinka v zahrádce
+    if {work.alch.sber.pos1} is set:
+        if location of event-block is within {work.alch.sber.pos1} and {work.alch.sber.pos2}:
+            cancel event
+            
+            # Určení typu bylinky
+            set {_item} to air
+            if event-block is poppy:
+                set {_item} to poppy named "{@herb_red}" with lore "&7Čerstvě utržená bylinka."
+            else if event-block is blue orchid:
+                set {_item} to blue orchid named "{@herb_blue}" with lore "&7Čerstvě utržená bylinka."
+            else if event-block is dandelion:
+                set {_item} to dandelion named "{@herb_yellow}" with lore "&7Čerstvě utržená bylinka."
+            
+            # Sběr
+            give {_item} to player
+            play sound "block.sweet_berry_bush.pick" with volume 0.8 at event-block
+            send action bar "&aSebral jsi %name of {_item}%" to player
+            
+            # Mechanika růstu (Zmizí a za minutu se vrátí)
+            set {_loc} to location of event-block
+            set {_type} to type of event-block
+            set block at {_loc} to air
+            
+            wait 60 seconds
+            set block at {_loc} to {_type}
+            play sound "block.grass.place" with volume 0.5 at {_loc}
+
+# --- 3. DRCENÍ BYLIN (V KVĚTINÁČI V DÍLNĚ) ---
+on right click on flower pot:
+    if {work.alch.pos1} is set:
+        if location of event-block is within {work.alch.pos1} and {work.alch.pos2}:
+            
+            # Musí držet jednu z našich bylinek
+            if name of player's tool is "{@herb_red}" or "{@herb_blue}" or "{@herb_yellow}":
+                cancel event
+                
+                remove 1 of player's tool from player
+                play sound "block.grindstone.use" with volume 1 at event-block
+                send action bar "&dDrtíš bylinku v hmoždíři..." to player
+                
+                wait 1 second
+                
+                # Získá drcenou směs (sugar)
+                set {_res} to sugar named "{@crushed_herb}" with lore "&7Základní esence pro výrobu lektvarů."
+                give 1 of {_res} to player
+                play sound "item.bottle.fill" with volume 0.5 at event-block
+            else:
+                send action bar "&7Zde můžeš drtit bylinky ze zahrádky." to player
+
+# --- 4. VAŘENÍ (Brewing Stand GUI - Již hotové) ---
+on right click on brewing stand:
+    if {work.alch.pos1} is set:
+        if location of event-block is within {work.alch.pos1} and {work.alch.pos2}:
+            cancel event
+            
+            set {_gui} to chest inventory with 3 rows named "Alchymistický stůl"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+            
+            set slot 11 of {_gui} to potion of regeneration named "&dRegenerace" with lore "&7Cena: 20x {@crushed_herb}"
+            set slot 13 of {_gui} to potion of swiftness named "&bRychlost" with lore "&7Cena: 20x {@crushed_herb}"
+            set slot 15 of {_gui} to potion of strength named "&cSíla" with lore "&7Cena: 30x {@crushed_herb}"
+            open {_gui} to player
+
+on inventory click:
+    if name of event-inventory is "Alchymistický stůl":
+        cancel event
+        if index of clicked slot is 11 or 13 or 15:
+            set {_cost} to 20
+            if index of clicked slot is 15:
+                set {_cost} to 30
+            
+            if player has {_cost} of sugar named "{@crushed_herb}":
+                remove {_cost} of sugar named "{@crushed_herb}" from player
+                give 1 of event-item to player
+                play sound "block.brewing_stand.brew" at player
+                send "&aUvařil jsi lektvar!" to player
+                close player's inventory
+            else:
+                send "&cChybí ti {@crushed_herb}!" to player
+                play sound "block.chest.locked" at player

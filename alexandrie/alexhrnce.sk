@@ -1,0 +1,168 @@
+# =================================================================
+# HRNČÍŘSTVÍ 2.2 - FINAL FIX (Stabilní seznam střepů)
+# =================================================================
+
+options:
+    raw_clay: &8Mokrá říční hlína
+    clay_mix: &7Hliněná směs
+    shov_name: &6Lopata na říční bahno
+
+
+# --- 1. SBĚR HLÍNY U ŘEKY (Pouze s lopatou) ---
+on right click:
+    if {work.hrn.sber.pos1} is set:
+        if location of event-block is within {work.hrn.sber.pos1} and {work.hrn.sber.pos2}:
+            
+            # Kontrola nástroje
+            if name of player's tool is "{@shov_name}":
+                cancel event
+                
+                if {pottery.digging::%player%} is set:
+                    stop
+                set {pottery.digging::%player%} to true
+                
+                play sound "block.gravel.break" with volume 0.5 at event-block
+                send action bar "&8Hrabání v bahně..." to player
+                wait 15 ticks
+                damageTool(player)
+                
+                set {_c} to clay ball named "{@raw_clay}" with lore "&7Smradlavé bahno z řeky." and "&7V dílně z toho můžeš něco uhníst."
+                give {_c} to player
+                play sound "entity.item.pickup" at player
+                send action bar "&aNašel jsi mokrou hlínu!" to player
+                
+                delete {pottery.digging::%player%}
+            else:
+                send action bar "&cK nálezu jemné hlíny potřebuješ {@shov_name}!" to player
+
+# --- 2. HNĚTENÍ (Na schodech v dílně) ---
+on right click:
+    if event-block is set:
+        if "%type of event-block%" contains "stairs":
+            if {work.hrn.pos1} is set:
+                if location of event-block is within {work.hrn.pos1} and {work.hrn.pos2}:
+                    
+                    if name of player's tool is "{@raw_clay}":
+                        if player is sneaking:
+                            cancel event
+                            
+                            if {pottery.kneading::%player%} is set:
+                                stop
+                            set {pottery.kneading::%player%} to true
+                            
+                            remove 1 of player's tool from player
+                            
+                            loop 3 times:
+                                play sound "block.gravel.step" with volume 0.8 at event-block
+                                send action bar "&7Hnětení... [%loop-number%/3]" to player
+                                wait 15 ticks
+                            
+                            set {_mix} to clay ball named "{@clay_mix}" with lore "&7Uhnětený kus hlíny." and "&7Teď ho musíš vypálit v peci."
+                            give {_mix} to player
+                            
+                            send action bar "&aHlína je připravena k vypálení!" to player
+                            delete {pottery.kneading::%player%}
+                        else:
+                            send action bar "&7Drž SHIFT pro hnětení hlíny." to player
+
+# =================================================================
+# 3. VYPALOVÁNÍ (Pec s GUI)
+# =================================================================
+
+on right click on furnace:
+    if {work.hrn.pos1} is set:
+        if location of event-block is within {work.hrn.pos1} and {work.hrn.pos2}:
+            cancel event
+            
+            # Otevření GUI
+            set {_gui} to chest inventory with 3 rows named "Hrnčířská pec"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+            
+            # Slot pro zobrazení, co je potřeba
+            set slot 10 of {_gui} to clay ball named "{@clay_mix}" with lore "&7Vlož směs a klikni na oheň."
+            
+            # Tlačítko spuštění
+            set slot 13 of {_gui} to campfire named "&6&lSPUSTIT VÝPAL" with lore "&7Kliknutím vypálíš 1ks hlíny."
+            
+            # Slot pro výsledek (jen info)
+            set slot 16 of {_gui} to flower pot named "&7Výsledek" with lore "&7Získáš náhodný střep."
+            
+            open {_gui} to player
+
+# --- LOGIKA GUI PECE ---
+on inventory click:
+    if name of event-inventory is "Hrnčířská pec":
+        cancel event
+        
+        # Kliknutí na tlačítko výpalu (slot 13)
+        if index of clicked slot is 13:
+            
+            # Ochrana proti spamu
+            if {pottery.firing::%player%} is set:
+                send action bar "&cPece je už rozpálená, čekej!" to player
+                stop
+            
+            # Kontrola, zda má hráč směs
+            if player has clay ball named "{@clay_mix}":
+                
+                # ZÁMEK A ODEBRÁNÍ
+                set {pottery.firing::%player%} to true
+                remove 1 of clay ball named "{@clay_mix}" from player
+                
+                # ANIMACE V GUI
+                play sound "block.furnace.fire_glow" with volume 1 at player
+                set slot 13 of event-inventory to orange stained glass pane named "&6&lVYPALUJE SE..."
+                wait 0.3 second
+                
+                if name of player's current inventory is "Hrnčířská pec":
+                    set slot 13 of event-inventory to red stained glass pane named "&c&lVYPALUJE SE..."
+                    play sound "block.fire.ambient" with volume 1 at player
+                wait 0.3 second
+                
+                if name of player's current inventory is "Hrnčířská pec":
+                    set slot 13 of event-inventory to lava bucket named "&e&lHOTOVO!"
+                    play sound "block.lava.extinguish" with volume 1 at player
+                
+                # GENEROVÁNÍ STŘEPU (Stejný seznam jako minule)
+                clear {_list::*}
+                add archer pottery sherd to {_list::*}
+                add angler pottery sherd to {_list::*}
+                add arms up pottery sherd to {_list::*}
+                add blade pottery sherd to {_list::*}
+                add brewer pottery sherd to {_list::*}
+                add burn pottery sherd to {_list::*}
+                add danger pottery sherd to {_list::*}
+                add explorer pottery sherd to {_list::*}
+                add friend pottery sherd to {_list::*}
+                add heart pottery sherd to {_list::*}
+                #add heartbroke pottery sherd to {_list::*}
+                add howl pottery sherd to {_list::*}
+                add miner pottery sherd to {_list::*}
+                add mourner pottery sherd to {_list::*}
+                add plenty pottery sherd to {_list::*}
+                add prize pottery sherd to {_list::*}
+                add sheaf pottery sherd to {_list::*}
+                add shelter pottery sherd to {_list::*}
+                add skull pottery sherd to {_list::*}
+                #add snapper pottery sherd to {_list::*}
+                
+                set {_sherd} to random element out of {_list::*}
+                give 1 of {_sherd} to player
+                
+                send action bar "&6&lVypáleno! Získal jsi střep." to player
+                
+                # RESET TLAČÍTKA (Pokud má hráč menu stále otevřené)
+                wait 10 ticks
+                if name of player's current inventory is "Hrnčířská pec":
+                    set slot 13 of event-inventory to campfire named "&6&lSPUSTIT VÝPAL" with lore "&7Kliknutím vypálíš 1ks hlíny."
+                
+                delete {pottery.firing::%player%}
+                
+            else:
+                send "&cChybí ti {@clay_mix}!" to player
+                play sound "block.chest.locked" with volume 1 at player
+
+# Ochrana pro případ odpojení
+on quit:
+    delete {pottery.firing::%player%}

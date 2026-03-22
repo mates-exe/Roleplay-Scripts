@@ -1,0 +1,199 @@
+# =================================================================
+# SYSTÉM VINAŘSTVÍ (Sběr a Stáčení) - FIX
+# =================================================================
+
+options:
+    # Definice jmen pro snadnou úpravu
+    grape_name: "&4Vinná réva"
+    wine_name: "&4Červené víno"
+    shears_name: "&6&lNůžky na vínečko"
+
+# --- POMOCNÉ FUNKCE (Aby byl item vždy stejný při dávání i kontrole) ---
+
+function getGrapeItem() :: item:
+    set {_i} to sweet berries named {@grape_name}
+    set lore of {_i} to "&dMůžete zpracovat na víno."
+    return {_i}
+
+function getWineItem() :: item:
+    set {_p} to potion named {@wine_name}
+    set lore of {_p} to "&7Velmi kvalitní červené víno."
+    
+    # Nastavení efektů (vyžaduje SkBee nebo novější Skript)
+    # Pokud ti to hází chybu, smaž řádky níže až po 'return'
+    add luck 3 to potion effects of {_p}
+    add regeneration 2 to potion effects of {_p}
+    # Číslo 8388608 je tmavě červená barva v desítkové soustavě
+    #set potion color of {_p} to color from rgb(120, 0, 0)
+    #color player's tool (120, 0, 0)
+    #set potion color of {_p} to red
+    apply potion contents to {_p}:
+        # Místo čísla použijte přímo barvu z RGB
+        custom_color: rgb(120, 0, 0)
+    return {_p}
+
+function getShearsItem() :: item:
+    set {_s} to shears named {@shears_name}
+    set lore of {_s} to "&dNůžky, které použiješ když chceš kalit"
+    enchant {_s} with unbreaking 3
+    enchant {_s} with mending 1
+    return {_s}
+
+# --- 1. NASTAVENÍ OBLASTI ---
+command /setvinice <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {vinice.pos1} to location of player
+            send "&2[Vinice] &aPrvní roh vinice nastaven."
+        else if arg-1 is "2":
+            set {vinice.pos2} to location of player
+            send "&2[Vinice] &aDruhý roh vinice nastaven."
+
+# --- 2. SBĚR HROZNŮ (Mangrove Leaves) ---
+on right click on mangrove leaves:
+    if {vinice.pos1} is not set:
+        stop
+    if {vinice.pos2} is not set:
+        stop
+        
+    # Kontrola, zda je hráč v oblasti
+    if location of event-block is within {vinice.pos1} and {vinice.pos2}:
+        
+        if name of player's tool is {@shears_name}:
+            cancel event
+            
+            # --- POŠKOZENÍ NÁSTROJE ---
+            damage player's tool by 1
+            
+            set {_gui} to chest inventory with 3 rows named "Hustá réva"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to green stained glass pane named "&2Listí" with lore "&7Prohledat..."
+            set {vinice.clicks::%player%} to 0
+            open {_gui} to player
+            play sound "block.vine.step" with volume 1 at player
+        else:
+            send action bar "&7Na sběr hroznů potřebuješ speciální nůžky!" to player
+
+# --- 3. STÁČENÍ VÍNA (Tripwire Hook) ---
+on right click on tripwire hook:
+    if {vinice.pos1} is not set:
+        stop
+    if location of event-block is within {vinice.pos1} and {vinice.pos2}:
+        cancel event
+        set {_gui} to chest inventory with 3 rows named "Vinný sud"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to spruce planks named " "
+        
+        set {_reqItem} to getGrapeItem()
+        set slot 11 of {_gui} to {_reqItem}
+        set slot 13 of {_gui} to tripwire hook named "&6&lSTOČIT VÍNO" with lore "&7Kliknutím naplníš láhev vínem."
+        set slot 15 of {_gui} to glass bottle named "&fPotřebuješ: Prázdná láhev"
+        
+        open {_gui} to player
+
+# =================================================================
+# LOGIKA GUI
+# =================================================================
+
+on inventory click:
+    
+    # --- A) LOGIKA SBĚRU (Hledání v listí) ---
+    if name of event-inventory is "Hustá réva":
+        cancel event
+        if name of event-item is "&2Listí":
+            add 1 to {vinice.clicks::%player%}
+            set {_rand} to random integer between 1 and 100
+            
+            # ÚSPĚCH (35%)
+            if {_rand} <= 35:
+                set slot index of clicked slot of event-inventory to red stained glass pane named {@grape_name}
+                play sound "block.sweet_berry_bush.pick" with volume 1 at player
+                
+                # ZDE POUŽIJEME FUNKCI PRO PŘEDMĚT
+                give player getGrapeItem()
+                
+                send action bar "&aNašel jsi hrozen!" to player
+            
+            # PAVOUK (15%) - upraveno na 36-50
+            else if {_rand} <= 50:
+                set slot index of clicked slot of event-inventory to black stained glass pane named "&8&lPavouk!"
+                play sound "entity.spider.ambient" with volume 1 at player
+                damage player by 1
+                send action bar "&cKousl tě pavouk!" to player
+            
+            # NIC (zbytek)
+            else:
+                set slot index of clicked slot of event-inventory to air
+                play sound "block.grass.break" with volume 0.5 at player
+            
+            if {vinice.clicks::%player%} >= 5:
+                wait 10 ticks
+                close player's inventory
+
+# --- B) LOGIKA STÁČENÍ (Sud) ---
+    if name of event-inventory is "Vinný sud":
+        cancel event
+        
+        if index of clicked slot is 13: # Kliknutí na kohoutek
+        
+            # 0. Ochrana proti spamování (pokud už stáčí, stopneme to)
+            if {wine_process::%player%} is set:
+                send action bar "&cPočkej, láhev se teprve plní..." to player
+                stop
+            
+            # 1. Kontrola Láhve
+            if player has glass bottle:
+                
+                # 2. Kontrola Hroznů (pomocí přesného itemu)
+                set {_grapes} to getGrapeItem()
+                
+                if player has {_grapes}:
+                    
+                    # --- ZAMKNUTÍ PROCESU ---
+                    set {wine_process::%player%} to true
+                    
+                    # Odebrání surovin (Odebereme hned, aby je hráč nemohl vyhodit během čekání)
+                    remove 1 glass bottle from player
+                    remove 1 of {_grapes} from player
+                    
+                    # Efekty GUI - Začátek
+                    play sound "block.brewing_stand.brew" with volume 1 at player
+                    set slot 13 of event-inventory to pink stained glass pane named "&dStáčí se..." with lore "&7Čekej 1 sekundu..."
+                    
+                    # --- ČEKÁNÍ (ZDE SE NASTAVUJE ČAS) ---
+                    wait 1 second 
+                    
+                    # Kontrola, zda má hráč stále otevřené menu (pokud ho zavřel, jen mu dáme item a končíme)
+                    if name of player's current inventory is "Vinný sud":
+                        play sound "item.bottle.fill" with volume 1 at player
+                        set slot 13 of event-inventory to tripwire hook named "&6&lSTOČIT VÍNO" with lore "&7Kliknutím naplníš láhev vínem."
+                    else:
+                        # Pokud menu zavřel, přehrajeme jen zvuk
+                        play sound "item.bottle.fill" with volume 1 at player
+
+                    # Dát víno
+                    give player getWineItem()
+                    
+                    send action bar "&d&lStočil jsi láhev vína!" to player
+                    
+                    # --- ODEMKNUTÍ PROCESU ---
+                    delete {wine_process::%player%}
+                
+                else:
+                    send "&cChybí ti Vinná réva!" to player
+                    play sound "block.chest.locked" with volume 1 at player
+            
+            else:
+                send "&cChybí ti prázdná láhev!" to player
+                play sound "block.chest.locked" with volume 1 at player
+
+# Ochrana pro případ, že se server restartuje nebo reloadneš skript během stáčení
+on quit:
+    delete {wine_process::%player%}
+
+# --- ADMIN PŘÍKAZY ---
+command /dejnuzky:
+    permission: rp.admin
+    trigger:
+        give player getShearsItem()

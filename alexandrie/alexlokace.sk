@@ -1,0 +1,102 @@
+# =================================================================
+# MASTER SETTINGS COMMAND - ALEXANDRIE
+# =================================================================
+
+command /alexset [<text>] [<text>] [<text>]:
+    permission: rp.admin
+    permission message: &cNa tohle nemáš práva!
+    description: Hlavní příkaz pro nastavení všech lokací Alexandrie.
+    trigger:
+        if arg-1 is not set:
+            send "&e&l--- [ ALEXANDRIE SETTINGS ] ---"
+            send "&6/alexset lom <1/2> &7- Těžba pískovce"
+            send "&6/alexset dilna <koz/hrn/alch/pivo> <1/2> &7- Regiony prací"
+            send "&6/alexset hrn sber <1/2> &7- Sběr bahna u řeky"
+            send "&6/alexset alch sber <1/2> &7- Zahrádka na byliny"
+            send "&6/alexset lotos <sber/lab> <1/2> &7- Drogy (Oáza/Varna)"
+            send "&6/alexset koz krava &7- Spawn krávy pro kůži"
+            send "&6/alexset heist <blueprint/guard/wall/sarcophagus/exit> &7- Pyramida"
+            stop
+
+        # --- 1. LOM ---
+        if arg-1 is "lom":
+            if arg-2 is "1":
+                set {alex.lom.pos1} to location of player
+                send "&e[Alex] &fLom: 1. bod nastaven."
+            else if arg-2 is "2":
+                set {alex.lom.pos2} to location of player
+                send "&e[Alex] &fLom: 2. bod nastaven."
+
+        # --- 2. DÍLNY (Regiony pro interakci) ---
+        else if arg-1 is "dilna":
+            if arg-3 is "1":
+                set {work.%arg-2%.pos1} to location of player
+                send "&e[Alex] &fDílna %arg-2%: 1. bod nastaven."
+            else if arg-3 is "2":
+                set {work.%arg-2%.pos2} to location of player
+                send "&e[Alex] &fDílna %arg-2%: 2. bod nastaven."
+
+        # --- 3. SBĚR PRO PRÁCE ---
+        else if arg-1 is "hrn":
+            if arg-2 is "sber":
+                if arg-3 is "1":
+                    set {work.hrn.sber.pos1} to location of player
+                    send "&e[Alex] &fHrnčířství: 1. bod sběru hlíny nastaven."
+                else if arg-3 is "2":
+                    set {work.hrn.sber.pos2} to location of player
+                    send "&e[Alex] &fHrnčířství: 2. bod sběru hlíny nastaven."
+
+        else if arg-1 is "alch":
+            if arg-2 is "sber":
+                if arg-3 is "1":
+                    set {work.alch.sber.pos1} to location of player
+                    send "&e[Alex] &fAlchymie: 1. bod zahrádky nastaven."
+                else if arg-3 is "2":
+                    set {work.alch.sber.pos2} to location of player
+                    send "&e[Alex] &fAlchymie: 2. bod zahrádky nastaven."
+
+        # --- 4. DROGY (LOTOS) ---
+        else if arg-1 is "lotos":
+            if arg-2 is "sber":
+                if arg-3 is "1":
+                    set {lotus.sber1} to location of player
+                    send "&b[Lotos] &f1. bod sběru nastaven."
+                else if arg-3 is "2":
+                    set {lotus.sber2} to location of player
+                    send "&b[Lotos] &f2. bod sběru nastaven."
+            else if arg-2 is "lab":
+                if arg-3 is "1":
+                    set {lotus.lab1} to location of player
+                    send "&d[Lotos] &f1. bod varny nastaven."
+                else if arg-3 is "2":
+                    set {lotus.lab2} to location of player
+                    send "&d[Lotos] &f2. bod varny nastaven."
+
+        # --- 5. KOŽELUŽNA (Kráva) ---
+        else if arg-1 is "koz":
+            if arg-2 is "krava":
+                set {koz.cow_spawn} to location of player
+                # Spawneme krávy hned pro test
+                loop 2 times:
+                    spawn cow at {koz.cow_spawn}
+                    set metadata value "KOZ_COW" of last spawned cow to "TRUE"
+                send "&6[Koželužna] &fSpawn krávy nastaven."
+
+        # --- 6. HEIST (Pyramida) ---
+        else if arg-1 is "heist":
+            if arg-2 is "blueprint" or "wall" or "sarcophagus" or "torch":
+                if target block is set:
+                    set {heist.loc.%arg-2%} to location of target block
+                    send "&6[Heist] &fBod %arg-2% nastaven na blok, na který se díváš." to player
+                else:
+                    send "&c[Heist] Musíš se dívat na konkrétní blok!" to player
+            else if arg-2 is "guard" or "exit" or "torch":
+                set {heist.loc.%arg-2%} to location of player
+                send "&6[Heist] &fBod %arg-2% nastaven na tvou pozici." to player
+            else if arg-2 is "cellar":
+                set {heist.loc.cellar} to location of player
+                send "&6[Heist] &fBod %arg-2% (Sklep) nastaven na tvou pozici." to player
+                
+
+        else:
+            send "&cNeplatný argument! Napiš /alexset pro nápovědu."

@@ -1,0 +1,104 @@
+# =================================================================
+# PŘÍKAZ /PROHLEDAT (FINAL FIX pro 1.21.11 + Skript 2.14.1 BEZ NBT)
+# =================================================================
+
+# --- 1. PŘÍKAZ PROHLEDAT ---
+command /prohledat <player>:
+    permission: rp.straz
+    permission message: &cNa tento příkaz nemáš dostatečná oprávnění!
+    trigger:
+        set {_target} to arg-1
+        if distance between player and {_target} > 4:
+            send "&cHráč &e%{_target}% &cje příliš daleko! Musíš k němu blíž." to player
+            stop
+            
+        make player execute command "do prohledává %{_target}%"
+        
+        set {search.viewing::%player%} to true
+        set {search.target::%player%} to {_target}
+        
+        wait 2 ticks
+        open the inventory of {_target} to the player
+        send "&8[&6RP&8] &aProhlížím inventář. Můžeš zabavit pouze nelegální látky!" to player
+
+# --- 2. SYSTÉM ZABAVOVÁNÍ (Nejspolehlivější logika pro starý Skript) ---
+on inventory click:
+    if {search.viewing::%player%} is set:
+        
+        # 1. Povolíme klikání ve SVÉM inventáři (spodní část)
+        if clicked inventory is player's inventory:
+            stop
+            
+        set {_item} to event-item
+        
+        # Pokud klikl na VZDUCH, zakážeme to
+        if {_item} is air:
+            cancel event
+            stop
+        
+        # --- ZÍSKÁME VIDITELNÉ JMÉNO ITEMU (bez barevných kódů) ---
+        set {_visibleName} to uncolored name of {_item}
+        
+        # 2. KONTROLA DROG (Porovnáváme viditelný text a typ itemu)
+        set {_isDrug} to false
+        set {_drugName} to "Neznámá látka"
+        
+        # Semínka makovic (Type: Melon Seeds)
+        if {_item} is melon seeds:
+            if {_visibleName} contains "Semínka makovic":
+                set {_isDrug} to true
+                set {_drugName} to "&r&6Semínka makovic"
+        
+        # Opiový prášek (Type: Sugar)
+        else if {_item} is sugar:
+            if {_visibleName} contains "Opiový prášek":
+                set {_isDrug} to true
+                set {_drugName} to "&r&bOpiový prášek"
+        
+        # Kořen mandragory (Type: Beetroot)
+        else if {_item} is beetroot:
+            if {_visibleName} contains "Kořen mandragory":
+                set {_isDrug} to true
+                set {_drugName} to "&r&cKořen mandragory"
+        
+        # Krvavá sůl (Type: Redstone)
+        else if {_item} is redstone:
+            if {_visibleName} contains "Krvavá sůl":
+                set {_isDrug} to true
+                set {_drugName} to "&r&4Krvavá sůl"
+        
+        # Esence šílenství (Type: Nether Wart)
+        else if {_item} is nether wart:
+            if {_visibleName} contains "Esence šílenství":
+                set {_isDrug} to true
+                set {_drugName} to "&r&4Esence šílenství"
+        
+        # --- AKCE PODLE VÝSLEDKU ---
+        if {_isDrug} is true:
+            send "&8[&6RP&8] &c&lZABAVENO: &fPrávě jsi zabavil %{_drugName}%&f!" to player
+            set {_t} to {search.target::%player%}
+            if {_t} is online:
+                send "&8[&6RP&8] &cStráž ti zabavila %{_drugName}%&c!" to {_t}
+            stop # Povolí vzít item
+        else:
+            cancel event # Zakáže vzít item
+            send "&cTento předmět není nelegální, nemůžeš ho hráči vzít!" to player
+
+on inventory drag:
+    if {search.viewing::%player%} is set:
+        cancel event
+
+on inventory close:
+    if {search.viewing::%player%} is set:
+        delete {search.viewing::%player%}
+        delete {search.target::%player%}
+
+# --- 3. KLIKÁNÍ NA HRÁČE (SHIFT + KLIK PRO PROHLEDÁNÍ) ---
+on right click on player:
+    set {_target} to clicked player
+    if player is sneaking:
+        if player has permission "rp.straz":
+            cancel event
+            make player execute command "prohledat %{_target}%"
+            stop
+    send action bar "&7Postava: &e%name of {_target}%" to player

@@ -1,0 +1,73 @@
+# Nastavení příkazu /role
+command /role <text> <offline player> <text>:
+    permission: rp.admin
+    permission message: &cNa tento příkaz nemáš dostatečná oprávnění!
+    usage: &cPoužití: /role <set|del> <hráč> <název_role>
+    trigger:
+        set {_action} to arg-1
+        set {_player} to arg-2
+        set {_role} to arg-3
+
+        # -----------------------------------------------------
+        # ČÁST PRO PŘIŘAZENÍ ROLE (SET)
+        # -----------------------------------------------------
+        if {_action} is "set":
+            
+            # --- Role: STRAZ ---
+            if {_role} is "straz":
+                execute console command "lp user %{_player}% parent set straz"
+                execute console command "res pset Mesto.Zbrojnice %{_player}% trusted true"
+                execute console command "res pset Mesto.Zbrojnice %{_player}% door true"
+                
+                send "&8[&6RP&8] &aHráči &e%{_player}% &abyla nastavena role &6Stráž&a."
+                send "&8[&6RP&8] &7(Přidán do resky Mesto.Zbrojnice)" to player
+
+            # --- Role: SOUDCE (NOVÉ) ---
+            else if {_role} is "soudce":
+                execute console command "lp user %{_player}% parent set soudce"
+                # Zde si změň 'Mesto.Soud' na název tvé residence soudu!
+                #execute console command "res pset Mesto.Soud %{_player}% trusted true"
+                
+                send "&8[&6RP&8] &aHráči &e%{_player}% &abyla nastavena role &3Soudce&a."
+                #send "&8[&6RP&8] &7(Přidán do resky Mesto.Soud)" to player
+
+            else:
+                send "&cTato role neexistuje (dostupné: straz, soudce)."
+
+        # -----------------------------------------------------
+        # ČÁST PRO ODEBRÁNÍ ROLE (DEL)
+        # -----------------------------------------------------
+        else if {_action} is "del":
+            
+            # --- Role: STRAZ ---
+            if {_role} is "straz":
+                execute console command "lp user %{_player}% parent set default"
+                execute console command "res pdel Mesto.Zbrojnice %{_player}%"
+                
+                send "&8[&6RP&8] &cHráči &e%{_player}% &cbyla odebrána role &6Stráž&c."
+
+            # --- Role: SOUDCE (NOVÉ) ---
+            else if {_role} is "soudce":
+                execute console command "lp user %{_player}% parent set default"
+                #execute console command "res pdel Mesto.Soud %{_player}%"
+                
+                #send "&8[&6RP&8] &cHráči &e%{_player}% &cbyla odebrána role &3Soudce&c."
+
+            else:
+                send "&cTato role neexistuje (dostupné: straz, soudce)."
+        
+        else:
+            send "&cPoužití: /role set <hráč> <role> nebo /role del <hráč> <role>"
+
+# -----------------------------------------------------
+# AUTOMATICKÉ DOPLŇOVÁNÍ (TAB COMPLETE) - Upraveno
+# -----------------------------------------------------
+#on tab complete of "/role":
+#    # Zde přibyl "soudce" do seznamu
+#    set {_roles::*} to "straz" and "soudce"
+#    
+#    if part of command is 1:
+#        set tab completions for position 1 to "set" and "del"
+#    
+#    if part of command is 3:
+#        set tab completions for position 3 to {_roles::*}

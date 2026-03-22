@@ -1,0 +1,184 @@
+# =================================================================
+# SYSTÉM RULETY 2.2 - ANTI-ESCAPE + ŽETONY (Ancient RP)
+# =================================================================
+
+options:
+    prefix: &8[&6Ruleta&8] &r
+    red: red wool
+    black: black wool
+    green: lime wool
+    # DEFINICE ŽETONU (Heart of the Sea)
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setruleta:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {ruleta.loc} to location of target block
+            send "{@prefix} &aRuleta byla úspěšně nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na nějaký blok!" to player
+
+# --- 2. OTEVŘENÍ RULETY ---
+on right click:
+    if {ruleta.loc} is set:
+        if location of event-block is {ruleta.loc}:
+            cancel event
+            if {ruleta.active::%player%} is set:
+                send "{@prefix} &cTvoje ruleta už se točí!" to player
+                stop
+            
+            set {ruleta.bet::%player%} to 0
+            set {ruleta.color::%player%} to "NONE"
+            openRuletaGUI(player)
+
+# --- 3. GUI RULETY ---
+function openRuletaGUI(p: player):
+    set {_gui} to chest inventory with 5 rows named "Královská Ruleta"
+    loop 45 times:
+        set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+    set slot 4 of {_gui} to paper named "&e&lInformace o sázce" with lore "&7Vsadil jsi: &f%{ruleta.bet::%{_p}%}%$" and "&7Barva: &f%{ruleta.color::%{_p}%}%"
+    set slot 19 of {_gui} to {@red} named "&c&lČERVENÁ" with lore "&7Výhra: &f2x"
+    set slot 22 of {_gui} to {@green} named "&a&lZELENÁ" with lore "&7Výhra: &f14x"
+    set slot 25 of {_gui} to {@black} named "&8&lČERNÁ" with lore "&7Výhra: &f2x"
+    set slot 37 of {_gui} to paper named "&f+ 100$"
+    set slot 38 of {_gui} to paper named "&f+ 500$"
+    set slot 39 of {_gui} to paper named "&f+ 2 500$"
+    set slot 40 of {_gui} to paper named "&f+ 10 000$"
+    set slot 41 of {_gui} to paper named "&f+ 50 000$"
+    set slot 43 of {_gui} to barrier named "&cResetovat částku"
+    
+    # Tlačítko s informací o žetonu
+    set slot 13 of {_gui} to nether star named "&6&l&nROZTOČIT RULETU!" with lore "&7Vyžaduje: &61x Kasino Žeton"
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Královská Ruleta":
+        cancel event
+        
+        if {ruleta.active::%player%} is true:
+            send action bar "&cPočkej, až se ruleta dotočí!" to player
+            stop
+
+        if clicked slot is 19:
+            set {ruleta.color::%player%} to "RED"
+            play sound "block.note_block.hat" at player
+        else if clicked slot is 22:
+            set {ruleta.color::%player%} to "GREEN"
+            play sound "block.note_block.hat" at player
+        else if clicked slot is 25:
+            set {ruleta.color::%player%} to "BLACK"
+            play sound "block.note_block.hat" at player
+            
+        if index of clicked slot is between 37 and 41:
+            set {_add} to 100 if index of clicked slot is 37
+            set {_add} to 500 if index of clicked slot is 38
+            set {_add} to 2500 if index of clicked slot is 39
+            set {_add} to 10000 if index of clicked slot is 40
+            set {_add} to 50000 if index of clicked slot is 41
+            add {_add} to {ruleta.bet::%player%}
+            play sound "entity.item.pickup" at player
+            
+        if clicked slot is 43:
+            set {ruleta.bet::%player%} to 0
+            play sound "block.lava.extinguish" at player
+            
+        set slot 4 of event-inventory to paper named "&e&lInformace o sázce" with lore "&7Vsadil jsi: &f%{ruleta.bet::%player%}%$" and "&7Barva: &f%{ruleta.color::%player%}%"
+        
+        if clicked slot is 13:
+            # --- KONTROLA ŽETONU ---
+            if player does not have 1 of {@token}:
+                send "{@prefix} &cNemáš u sebe Kasino Žeton!" to player
+                play sound "block.chest.locked" at player
+                stop
+
+            if {ruleta.color::%player%} is "NONE":
+                send "{@prefix} &cMusíš si vybrat barvu!" to player
+                stop
+            if {ruleta.bet::%player%} <= 0:
+                send "{@prefix} &cMusíš vsadit peníze!" to player
+                stop
+            if player's balance < {ruleta.bet::%player%}:
+                send "{@prefix} &cNemáš dostatek peněz!" to player
+                stop
+                
+            # Odebrání žetonu a peněz
+            remove 1 of {@token} from player
+            execute console command "eco take %player% %{ruleta.bet::%player%}%"
+            
+            # Podíl provozovateli (pokud používáš)
+            payKasinoShare(player)
+
+            startRuletaAnim(player, event-inventory)
+
+# --- 5. ANIMACE S LOCKEM (Zůstává stejná) ---
+function startRuletaAnim(p: player, inv: inventory):
+    set {ruleta.active::%{_p}%} to true
+    set {ruleta.current_inv::%{_p}%} to {_inv}
+    
+    set {_finalBet} to {ruleta.bet::%{_p}%}
+    set {_finalColor} to {ruleta.color::%{_p}%}
+    set {_pool::*} to {@green}, {@red}, {@black}, {@red}, {@black}, {@red}, {@black}, {@red}, {@black}, {@red}, {@black}, {@red}, {@black}, {@red} and {@black}
+    set {_offset} to random integer between 1 and 15
+    set {_duration} to random integer between 35 and 50
+    set {_speed} to 1
+    
+    loop {_duration} times:
+        loop 9 times:
+            set {_slot} to 8 + loop-number-2
+            set {_colorIdx} to mod(loop-number-1 + loop-number-2 + {_offset}, 15) + 1
+            set slot {_slot} of {_inv} to {_pool::%{_colorIdx}%} named "&7Točení..."
+            
+        play sound "block.note_block.bit" with volume 0.3 and pitch 2 at {_p}
+        
+        if loop-number > ({_duration} - 10):
+            add 2 to {_speed}
+        else if loop-number > ({_duration} - 20):
+            add 1 to {_speed} if mod(loop-number, 2) is 0
+        
+        set {_wait} to "%{_speed}% ticks" parsed as timespan
+        wait {_wait}
+        
+    set {_winItem} to slot 13 of {_inv}
+    set {_winColor} to "NONE"
+    set {_winColor} to "RED" if {_winItem} is {@red}
+    set {_winColor} to "BLACK" if {_winItem} is {@black}
+    set {_winColor} to "GREEN" if {_winItem} is {@green}
+    
+    set slot 4 of {_inv} to {_winItem} named "&a&lVÝSLEDNÁ BARVA: %{_winColor}%"
+    
+    wait 10 ticks
+    
+    if {_winColor} is {_finalColor}:
+        set {_mult} to 2
+        set {_mult} to 14 if {_winColor} is "GREEN"
+        set {_prize} to {_finalBet} * {_mult}
+        execute console command "eco give %{_p}% %{_prize}%"
+        send "{@prefix} &a&lVÝHRA! &fPadla &e%{_winColor}% &fa vyhráváš &6%{_prize}%$" to {_p}
+        play sound "entity.player.levelup" at {_p}
+    else:
+        send "{@prefix} &c&lPROHRA. &7Padla &e%{_winColor}%&7. Sázka &f%{_finalBet}%$ &7propadla." to {_p}
+        play sound "entity.villager.no" at {_p}
+        
+    delete {ruleta.active::%{_p}%}
+    delete {ruleta.current_inv::%{_p}%}
+    
+    wait 3 seconds
+    if name of {_p}'s current inventory is "Královská Ruleta":
+        close inventory of {_p}
+
+# --- 6. POJISTKA PROTI ZAVŘENÍ ---
+on inventory close:
+    if name of event-inventory is "Královská Ruleta":
+        if {ruleta.active::%player%} is true:
+            wait 1 tick
+            if {ruleta.current_inv::%player%} is set:
+                open {ruleta.current_inv::%player%} to player
+                send action bar "&c&lNelze odejít během točení!" to player
+
+on quit:
+    delete {ruleta.active::%player%}
+    delete {ruleta.current_inv::%player%}

@@ -1,0 +1,147 @@
+# =================================================================
+# SYSTÉM VČELÍNA (Sběr medu & Medovar - Fix pro 1.21.11 a Skript 2.14)
+# =================================================================
+
+# --- NASTAVENÍ OBLASTI ---
+command /setvcelin <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {vcelin.pos1} to location of player
+            send "&e[Včelín] &aPrvní roh nastaven." to player
+        else if arg-1 is "2":
+            set {vcelin.pos2} to location of player
+            send "&e[Včelín] &aDruhý roh nastaven." to player
+
+# --- SBĚR MEDU (Úly) ---
+on right click on beehive or bee nest:
+    if {vcelin.pos1} is not set:
+        stop
+    if location of event-block is within {vcelin.pos1} and {vcelin.pos2}:
+        if name of player's tool contains "Sběrka na med":
+            cancel event
+            
+            # Poškození nástroje
+            damageTool(player)
+            
+            set {_gui} to chest inventory with 3 rows named "Vybírání včelího úlu"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to brown stained glass pane named "&6Včelí vosk"
+            set {vcelin.clicks::%player%} to 0
+            open {_gui} to player
+        else:
+            send action bar "&7Potřebuješ Sběrka na med..." to player
+
+# --- MEDOVAR (Zpracování pláství) ---
+on right click on brewing stand:
+    if {vcelin.pos1} is not set:
+        stop
+    if location of event-block is within {vcelin.pos1} and {vcelin.pos2}:
+        cancel event
+        
+        set {_gui} to chest inventory with 3 rows named "Lis na med"
+        loop 27 times:
+            set slot (loop-number - 1) of {_gui} to gray stained glass pane named " "
+        
+        set slot 10 of {_gui} to 1 of honeycomb named "&6Požadavek" with lore "&7Musíš mít v batohu Medovou plástev."
+        set slot 13 of {_gui} to orange dye named "&e&lSpustit lis" with lore "&7Kliknutím vymačkáš plástev z inventáře."
+        set slot 16 of {_gui} to glass bottle named "&fVýsledek"
+        
+        open {_gui} to player
+
+# --- LOGIKA PRO OBĚ GUI ---
+on inventory click:
+    # 1. MINIHRY V ÚLU
+    if name of event-inventory is "Vybírání včelího úlu":
+        cancel event
+        if name of event-item is "&6Včelí vosk":
+            add 1 to {vcelin.clicks::%player%}
+            set {_rand} to random integer between 1 and 10
+            if {_rand} <= 3:
+                set slot index of clicked slot of event-inventory to orange stained glass pane named "&r&6&lMedová plástev!"
+                # --- GIVE: Medová plástev (Fixnutá syntaxe) ---
+                give 1 of honeycomb named "&r&6Medová plástev" with lore "&r&7Můžete vymačkat pro získání medu." to player
+                play sound "block.beehive.exit" with volume 0.8 to player
+            else if {_rand} <= 5:
+                set slot index of clicked slot of event-inventory to red stained glass pane named "&r&c&lAgresivní včela!"
+                apply poison 1 to player for 3 seconds
+                play sound "entity.bee.sting" with volume 0.8 to player
+            else:
+                set slot index of clicked slot of event-inventory to air
+                play sound "block.beehive.shear" with volume 0.5 to player
+            if {vcelin.clicks::%player%} >= 5:
+                wait 10 ticks
+                close player's inventory
+
+# 2. LISOVÁNÍ MEDU (UPRAVENO - Časovač a Ochrana)
+    if name of event-inventory is "Lis na med":
+        cancel event
+        
+        # Kliknutí na prostřední slot (Spustit lis)
+        if index of clicked slot is 13:
+            
+            # A) OCHRANA PROTI SPAMU (pokud už lisuje, stopneme to)
+            if {honey_process::%player%} is set:
+                send action bar "&cPočkej, lis ještě pracuje..." to player
+                stop
+
+            # B) DEFINICE ITEMU (Musí přesně sedět s tím, co hráč dostane při sběru)
+            set {_reqItem} to honeycomb named "&r&6Medová plástev"
+            set lore of {_reqItem} to "&r&7Můžete vymačkat pro získání medu."
+
+            # C) KONTROLA VLASTNICTVÍ
+            if player has {_reqItem}:
+                
+                # --- ZAMKNUTÍ PROCESU ---
+                set {honey_process::%player%} to true
+                
+                # Okamžité odebrání suroviny
+                remove 1 of {_reqItem} from player
+                
+                # Vizuální efekt v GUI - Začátek
+                play sound "block.brewing_stand.brew" with volume 0.8 at player
+                set slot 13 of event-inventory to redstone block named "&cLisuje se..." with lore "&7Čekej 1 sekundu..."
+                
+                # --- ČEKÁNÍ (ZDE SE NASTAVUJE ČAS) ---
+                wait 1 second
+                
+                # Kontrola, zda má hráč stále otevřené menu
+                if name of player's current inventory is "Lis na med":
+                    # Reset tlačítka na původní stav (aby mohl lisovat dál)
+                    set slot 13 of event-inventory to orange dye named "&e&lSpustit lis" with lore "&7Kliknutím vymačkáš plástev z inventáře."
+                    play sound "item.bottle.fill" with volume 0.8 at player
+                else:
+                    # Pokud menu zavřel, jen přehrajeme zvuk
+                    play sound "item.bottle.fill" with volume 0.8 at player
+                
+                # Dát výsledný med
+                give 1 of honey bottle named "&r&6Med" with lore "&r&7Kvalitní med ruční výroby!" to player
+                
+                send action bar "&a&lMed byl úspěšně vylisován!" to player
+                
+                # --- ODEMKNUTÍ PROCESU ---
+                delete {honey_process::%player%}
+                
+            else:
+                send "&cNemáš v inventáři Medovou plástev!" to player
+                play sound "block.chest.locked" with volume 0.5 at player
+
+# Ochrana pro případ odpojení (vlož na úplný konec souboru, pokud to tam už nemáš z vína)
+on quit:
+    delete {honey_process::%player%}
+    delete {wine_process::%player%}
+    
+# --- ADMIN PŘÍKAZY ---
+command /dejsberku:
+    permission: rp.admin
+    trigger:
+        set {_tool} to 1 of shears
+        set name of {_tool} to "&r&6&lSběrka na med"
+        set lore of {_tool} to "&r&5Nůžky, které použiješ když chceš kalit"
+        enchant {_tool} with mending 1 and unbreaking 3
+        give {_tool} to player
+        
+command /dejplastev:
+    permission: rp.admin
+    trigger:
+        give 1 of honeycomb named "&r&6Medová plástev" with lore "&r&7Můžete vymačkat pro získání medu." to player

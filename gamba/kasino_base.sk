@@ -1,0 +1,35 @@
+# =================================================================
+# KASINO SYSTÉM - SPRÁVA PROVOZOVATELE
+# =================================================================
+
+options:
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    prefix: &8[&6Gamble&8] &r
+
+# --- NASTAVENÍ PROVOZOVATELE ---
+command /kasinosetprovozovatel <offline player>:
+    permission: rp.admin
+    usage: /kasinosetprovozovatel <nick>
+    trigger:
+        set {kasino.provozovatel} to arg-1
+        send "&6[Kasino] &fNovým provozovatelem kasina je nyní &e%arg-1%&f." to player
+
+# --- FUNKCE PRO VÝPLATU PODÍLU ---
+function payKasinoShare(p: player):
+    if {kasino.provozovatel} is set:
+        # Provozovatel nedostává peníze ze svých vlastních sázek
+        if {kasino.provozovatel} is not {_p}:
+            execute console command "eco give %{kasino.provozovatel}% 2"
+            
+            # Volitelné: Poslat zprávu provozovateli, pokud je online
+            if {kasino.provozovatel} is online:
+                #send action bar "&6[Kasino] &7Obdržel jsi podíl &f2$ &7od hráče &f%name of {_p}%&7." to {kasino.provozovatel}
+                send action bar "&6[Kasino] &7Obdržel jsi podíl &f2$. &7Hráč &f%name of {_p}%&7 si zahrál v kasínu." to {kasino.provozovatel}
+
+
+command /dejzetony <player> <integer>:
+    permission: rp.admin
+    usage: /dejzetony <hráč> <množství>
+    trigger:
+        give arg-2 of {@token} to arg-1
+        send "{@prefix} &fHráči &e%arg-1% &fbyl dán žeton (x%arg-2%)." to player

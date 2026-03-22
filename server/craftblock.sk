@@ -1,0 +1,19 @@
+# --- 5. BLOKOVÁNÍ CRAFTINGU MEZIPRODUKTŮ (FIXED) ---
+on craft:
+    # Projdeme všechny itemy v craftícím okně (ingredience)
+    loop all items in current inventory:
+        set {_name} to uncolored name of loop-item
+        
+        # Pokud najdeme zakázanou kůži mezi ingrediencemi
+        if {_name} is "Surová kůže" or "Mokrá kůže":
+            cancel event
+            send action bar "&cTuto kůži nelze použít ke craftění! Musíš ji zpracovat." to player
+            stop
+        else if {_name} is "Diamant":
+            cancel event
+            send action bar "&cZe surového diamantu nelze craftit!" to player
+            stop
+        else if {_name} is "Ledek":
+            cancel event
+            send action bar "&cZ ledku nic nejde udělat :/" to player
+            stop

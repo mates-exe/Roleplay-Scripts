@@ -1,0 +1,158 @@
+# =================================================================
+# PIVOVARNICTVÍ 2.3 - OSOBNÍ VÁRKY A OPRAVA VKLÁDÁNÍ
+# =================================================================
+
+options:
+    hops_name: &2Čerstvý chmel
+    shears_name: &6Nůžky na chmel
+    beer_low: &6Alexandrijský Ležák (10°)
+    beer_high: &6Alexandrijský Speciál (12°)
+    regen_time: 120 seconds
+
+# --- POMOCNÁ FUNKCE PRO PIVO ---
+function getBeerItem(quality: integer) :: item:
+    set {_p} to potion named ""
+    if {_quality} is 1:
+        set name of {_p} to "{@beer_low}"
+        apply potion contents to {_p}:
+            custom_color: rgb(255, 210, 50)
+    else:
+        set name of {_p} to "{@beer_high}"
+        apply potion contents to {_p}:
+            custom_color: rgb(218, 165, 32)
+    return {_p}
+
+
+command /pivoclean:
+    permission: rp.admin
+    trigger:
+        if target block is barrel:
+            set {_loc} to location of target block
+            # Toto smaže VŠECHNA data (všechny hráče) spojená s tímto konkrétním sudem
+            delete {brew.start::%{_loc}%::*}
+            delete {brew.amount::%{_loc}%::*}
+            send "&a[Pivovar] Všechny hráčské várky v tomto sudu byly smazány." to player
+        else:
+            send "&cMusíš se dívat na sud (barrel)!" to player
+
+# --- 1. SBĚR CHMELE ---
+on right click on firefly bush or large fern:
+    if {work.pivo.pos1} is set:
+        if location of event-block is within {work.pivo.pos1} and {work.pivo.pos2}:
+            if name of player's tool is "{@shears_name}":
+                cancel event
+                if chance of 70%:
+                    give 1 of slime ball named "{@hops_name}" with lore "&7Aromatický chmel." to player
+                    play sound "block.grass.break" with volume 0.5 at event-block
+                    send action bar "&2Utrhl jsi chmel!" to player
+                else:
+                    send action bar "&7Tento květ nebyl zralý..." to player
+                damageTool(player)
+                set {_loc} to location of event-block
+                set {_type} to type of event-block
+                set block at {_loc} to dead bush
+                wait {@regen_time}
+                set block at {_loc} to {_type}
+                play sound "block.grass.place" with volume 0.5 at {_loc}
+
+# --- 2. KLIKNUTÍ NA SUD (VKLÁDÁNÍ 30x CHMEL) ---
+on right click on barrel:
+    if {work.pivo.pos1} is set:
+        if location of event-block is within {work.pivo.pos1} and {work.pivo.pos2}:
+            cancel event
+            set {_loc} to location of event-block
+            set {_uuid} to uuid of player
+
+            # POKUD HRÁČ V SUDU NIC NEMÁ -> VLOŽIT 30x CHMEL
+            if {brew.start::%{_loc}%::%{_uuid}%} is not set:
+                if name of player's tool is "{@hops_name}":
+                    if amount of slime ball named "{@hops_name}" in player's inventory >= 30:
+                        remove 30 of slime ball named "{@hops_name}" from player's inventory
+                        
+                        set {brew.start::%{_loc}%::%{_uuid}%} to now
+                        set {brew.amount::%{_loc}%::%{_uuid}%} to 6 # Počet piv ve várce
+                        
+                        play sound "item.bucket.fill" with volume 1 at event-block
+                        send "&6[Pivovar] &fVložil jsi 30x chmel. V sudu zraje 6 sklenic piva!" to player
+                    else:
+                        send "&cNa velkou várku potřebuješ 30x chmel!" to player
+                else:
+                    send action bar "&7Sud je prázdný. Přines 30x chmel." to player
+                stop
+
+            # POKUD HRÁČ VÁRKU MÁ -> OTEVŘÍT GUI
+            set {_gui} to chest inventory with 3 rows named "Zrání piva"
+            loop 27 times:
+                set slot (loop-number - 1) of {_gui} to black stained glass pane named " "
+            
+            set {_waited} to difference between {brew.start::%{_loc}%::%{_uuid}%} and now
+            set {_rem} to {brew.amount::%{_loc}%::%{_uuid}%}
+            
+            set slot 10 of {_gui} to barrel named "&6Tvoje várka" with lore "&7Zraješ již: &f%{_waited}%" and "&7Zbývá sklenic: &e%{_rem}%/6"
+            
+            if {_waited} is less than 30 minutes:
+                set slot 13 of {_gui} to red stained glass pane named "&c&lNEDOZRALÉ" with lore "&7Zbývá: &f%(30 minutes - {_waited})%"
+            else:
+                if {_waited} is between 30 minutes and 60 minutes:
+                    set slot 13 of {_gui} to yellow stained glass pane named "&e&lSTŘEDNÍ KVALITA (10°)"
+                else:
+                    set slot 13 of {_gui} to lime stained glass pane named "&a&lMAXIMÁLNÍ KVALITA (12°)"
+                
+                set slot 16 of {_gui} to glass bottle named "&a&lSTOČIT PIVO"# with lore "&7Klikni pro stočení 1 sklenice." and "&7V sudu zbývá: &e%{_rem}%"
+            
+            open {_gui} to player
+            set {last_barrel::%player%} to {_loc}
+
+# --- 3. LOGIKA GUI (STOČENÍ JEDNÉ DÁVKY) ---
+on inventory click:
+    if name of event-inventory is "Zrání piva":
+        cancel event
+        if index of clicked slot is 16:
+            set {_loc} to {last_barrel::%player%}
+            set {_uuid} to uuid of player
+            
+            if player has glass bottle:
+                set {_waited} to difference between {brew.start::%{_loc}%::%{_uuid}%} and now
+                
+                if {_waited} is greater than 30 minutes:
+                    # Výpočet kvality
+                    if {_waited} is less than 60 minutes:
+                        set {_pivo} to getBeerItem(1)
+                    else:
+                        set {_pivo} to getBeerItem(2)
+                    
+                    # STOČENÍ
+                    remove 1 of glass bottle from player
+                    give {_pivo} to player
+                    play sound "item.bottle.fill" at player
+                    
+                    # ODEBRÁNÍ DÁVKY
+                    remove 1 from {brew.amount::%{_loc}%::%{_uuid}%}
+                    
+                    # Pokud je sud prázdný, smazat várku
+                    if {brew.amount::%{_loc}%::%{_uuid}%} <= 0:
+                        delete {brew.start::%{_loc}%::%{_uuid}%}
+                        delete {brew.amount::%{_loc}%::%{_uuid}%}
+                        close player's inventory
+                        send "&6[Pivovar] &fStočil jsi poslední sklenici. Sud je prázdný." to player
+                    else:
+                        # Aktualizace GUI pro zobrazení zbývajícího počtu
+                        send action bar "&6Stočeno! Zbývá: %{brew.amount::%{_loc}%::%{_uuid}%}% sklenic." to player
+                        # Znovu otevřeme GUI pro refresh čísel (volitelné)
+                        execute player command "pivorefresh %{_loc}%" # Pomocný fake command nebo jen close
+                        #close player's inventory
+                else:
+                    send "&cPivo ještě není pitelné!" to player
+            else:
+                send "&cPotřebuješ prázdnou láhev!" to player
+
+# --- PITÍ PIVA (Zůstává stejné) ---
+on consume:
+    if name of event-item is "{@beer_low}":
+        apply nausea 1 to player for 15 seconds
+        apply regeneration 1 to player for 5 seconds
+        send "&e[!] To pivo má říz!" to player
+    if name of event-item is "{@beer_high}":
+        apply nausea 2 to player for 30 seconds
+        apply strength 1 to player for 20 seconds
+        send "&c[!] Tohle pivo tě pěkně koplo!" to player

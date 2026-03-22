@@ -1,0 +1,144 @@
+# =================================================================
+# SYSTÉM ČTVERCOVÝCH HRANIC - S RESPRAWNEM V ZÓNĚ
+# =================================================================
+
+options:
+    msg_out: &4&l! HRANICE ! &cTato oblast je neprobádaná a nebezpečná!
+    border_bypass: rp.admin
+
+# --- 1. PŘÍKAZY ---
+command /borderbox <text> <text>:
+    permission: rp.admin
+    trigger:
+        if arg-2 is "1":
+            set {borders::%arg-1%::pos1} to location of player
+            send "&e[Hranice] &fPrvní roh zóny &6%arg-1% &fnastaven." to player
+        else if arg-2 is "2":
+            set {borders::%arg-1%::pos2} to location of player
+            send "&e[Hranice] &fDruhý roh zóny &6%arg-1% &fnastaven." to player
+        
+        if {borders::%arg-1%::pos1} is set:
+            if {borders::%arg-1%::pos2} is set:
+                if {border_list::*} does not contain arg-1:
+                    add arg-1 to {border_list::*}
+                send "&a[Hranice] &lZóna %arg-1% je nyní aktivní!" to player
+
+# NOVÝ PŘÍKAZ: Nastavení konkrétního místa oživení v zóně
+command /borderrespawn <text>:
+    permission: rp.admin
+    trigger:
+        if {border_list::*} contains arg-1:
+            set {borders::%arg-1%::respawn} to location of player
+            send "&a[Hranice] &fMísto oživení pro zónu &6%arg-1% &fnastaveno na tvou pozici." to player
+        else:
+            send "&c[Hranice] Tato zóna neexistuje!" to player
+
+command /borders:
+    permission: rp.admin
+    trigger:
+        send "&e&lSeznam aktivních čtvercových zón:" to player
+        loop {border_list::*}:
+            send "&7- &6%loop-value% &8(Svět: %world of {borders::%loop-value%::pos1}%)" to player
+
+command /delborder <text>:
+    permission: rp.admin
+    trigger:
+        delete {borders::%arg-1%::*}
+        remove arg-1 from {border_list::*}
+        send "&e[Hranice] &fOblast &6%arg-1% &fbyla smazána." to player
+
+# --- 2. KONTROLA POHYBU ---
+every 1 second:
+    loop all players:
+        if loop-player has permission "{@border_bypass}":
+            continue
+        if world of loop-player is "world":
+
+            set {_p_loc} to location of loop-player
+            set {_p_x} to x-coordinate of {_p_loc}
+            set {_p_z} to z-coordinate of {_p_loc}
+            
+            set {_safe} to false
+            set {_closest_center} to {_p_loc}
+            set {_min_dist} to 999999
+
+            loop {border_list::*}:
+                set {_p1} to {borders::%loop-value-2%::pos1}
+                set {_p2} to {borders::%loop-value-2%::pos2}
+                
+                if world of {_p_loc} is world of {_p1}:
+                    set {_min_x} to min(x-coordinate of {_p1}, x-coordinate of {_p2})
+                    set {_max_x} to max(x-coordinate of {_p1}, x-coordinate of {_p2})
+                    set {_min_z} to min(z-coordinate of {_p1}, z-coordinate of {_p2})
+                    set {_max_z} to max(z-coordinate of {_p1}, z-coordinate of {_p2})
+
+                    if {_p_x} >= {_min_x}:
+                        if {_p_x} <= {_max_x}:
+                            if {_p_z} >= {_min_z}:
+                                if {_p_z} <= {_max_z}:
+                                    set {_safe} to true
+                                    stop loop
+
+                    set {_c_x} to ({_min_x} + {_max_x}) / 2
+                    set {_c_z} to ({_min_z} + {_max_z}) / 2
+                    set {_center} to location({_c_x}, y-coordinate of {_p_loc}, {_c_z}, world of {_p_loc})
+                    
+                    set {_d} to distance between {_p_loc} and {_center}
+                    if {_d} < {_min_dist}:
+                        set {_min_dist} to {_d}
+                        set {_closest_center} to {_center}
+
+            if {_safe} is false:
+                set {_v} to vector between {_p_loc} and {_closest_center}
+                set vector length of {_v} to 1.5
+                send action bar "{@msg_out}" to loop-player
+                play sound "entity.warden.heartbeat" with volume 0.8 and pitch 0.5 to loop-player
+                push loop-player up at speed 2
+                push loop-player {_v} at speed 20
+                if {_min_dist} > 500:
+                    teleport loop-player to {_closest_center}
+
+# --- 3. LOGIKA RESPRAWNU V ZÓNĚ ---
+
+on death of player:
+    if world of victim is "world":
+        set {_p_loc} to location of victim
+        set {_p_x} to x-coordinate of {_p_loc}
+        set {_p_z} to z-coordinate of {_p_loc}
+        
+        # Zjistíme, v jaké zóně hráč umřel
+        loop {border_list::*}:
+            set {_p1} to {borders::%loop-value%::pos1}
+            set {_p2} to {borders::%loop-value%::pos2}
+            
+            if world of {_p_loc} is world of {_p1}:
+                set {_min_x} to min(x-coordinate of {_p1}, x-coordinate of {_p2})
+                set {_max_x} to max(x-coordinate of {_p1}, x-coordinate of {_p2})
+                set {_min_z} to min(z-coordinate of {_p1}, z-coordinate of {_p2})
+                set {_max_z} to max(z-coordinate of {_p1}, z-coordinate of {_p2})
+
+                # Pokud umřel uvnitř této zóny
+                if {_p_x} >= {_min_x}:
+                    if {_p_x} <= {_max_x}:
+                        if {_p_z} >= {_min_z}:
+                            if {_p_z} <= {_max_z}:
+                                # Pokud má zóna nastavený respawn bod, použijeme ho
+                                if {borders::%loop-value%::respawn} is set:
+                                    set {temp.respawn::%victim%} to {borders::%loop-value%::respawn}
+                                # Jinak ho hodíme do středu zóny
+                                else:
+                                    set {_c_x} to ({_min_x} + {_max_x}) / 2
+                                    set {_c_z} to ({_min_z} + {_max_z}) / 2
+                                    set {temp.respawn::%victim%} to location({_c_x}, y-coordinate of {_p_loc}, {_c_z}, world of {_p_loc})
+                                stop loop
+
+on respawn:
+    if {temp.respawn::%player%} is set:
+        # Nastavíme místo, kde se hráč fyzicky objeví
+        set respawn location to {temp.respawn::%player%}
+        
+        # Pojistka: Pro případ, že by jiný plugin (třeba Essentials) 
+        # respawn přebíjel, teleportujeme ho tam ještě o 1 tick později.
+        wait 1 tick
+        teleport player to {temp.respawn::%player%}
+        delete {temp.respawn::%player%}

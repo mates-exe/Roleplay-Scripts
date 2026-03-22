@@ -1,0 +1,3 @@
+command /autologin:
+    trigger:
+        execute player command "premium"

@@ -1,0 +1,164 @@
+# =================================================================
+# SYSTÉM: HNĚV ANUBISE 2.0 (Crash Game - Hardcore Start)
+# =================================================================
+
+options:
+    prefix: &8[&6Anubis&8] &r
+    token: heart of the sea named "&e&lKasino Žeton" with lore "&7Speciální platidlo pro automaty."
+    bg: black stained glass pane named " "
+    min_crash: 0.65 # Minimální hodnota, kdy to může bouchnout
+
+# --- 1. ADMIN NASTAVENÍ ---
+command /setanubis:
+    permission: rp.admin
+    trigger:
+        if target block is set:
+            set {anubis.loc} to location of target block
+            send "{@prefix} &aHra Hněv Anubise nastavena na tento blok." to player
+        else:
+            send "{@prefix} &cMusíš se dívat na blok!" to player
+
+# --- 2. OTEVŘENÍ ---
+on right click:
+    if {anubis.loc} is set:
+        if location of event-block is {anubis.loc}:
+            cancel event
+            if {anubis.active::%player%} is set:
+                send "{@prefix} &cPrávě jsi v souboji s bohem!" to player
+                stop
+            
+            set {anubis.bet::%player%} to 0
+            openAnubis(player)
+
+# --- 3. GUI ---
+function openAnubis(p: player):
+    set {_gui} to chest inventory with 3 rows named "Hněv Anubise"
+    loop 27 times:
+        set slot (loop-number - 1) of {_gui} to {@bg}
+    
+    set slot 4 of {_gui} to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{anubis.bet::%{_p}%}%$"
+    set slot 10 of {_gui} to paper named "&f+ 1 000$"
+    set slot 11 of {_gui} to paper named "&f+ 5 000$"
+    set slot 12 of {_gui} to barrier named "&cReset"
+    set slot 14 of {_gui} to sunflower named "&6&l&nSPUSTIT RITUÁL" with lore "&7Vsadíš peníze a začneš násobit." and "&7Startuješ na &c0.5x &7výhry!" and "" and "&7Vyžaduje: &61x Kasino Žeton"
+    
+    open {_gui} to {_p}
+
+# --- 4. LOGIKA KLIKÁNÍ ---
+on inventory click:
+    if name of event-inventory is "Hněv Anubise":
+        cancel event
+        set {_p} to player
+        
+        if {anubis.active::%{_p}%} is not set:
+            if index of clicked slot is 10 or 11:
+                set {_add} to 1000 if index of clicked slot is 10
+                set {_add} to 5000 if index of clicked slot is 11
+                add {_add} to {anubis.bet::%{_p}%}
+                play sound "entity.item.pickup" at {_p}
+            if clicked slot is 12:
+                set {anubis.bet::%{_p}%} to 0
+                play sound "block.lava.extinguish" at {_p}
+            
+            set slot 4 of event-inventory to paper named "&e&lAktuální sázka" with lore "&7Vsadil jsi: &f%{anubis.bet::%{_p}%}%$"
+
+            if clicked slot is 14:
+                if {anubis.bet::%{_p}%} <= 0:
+                    send "{@prefix} &cMusíš vsadit peníze!" to {_p}
+                    stop
+                if {_p} does not have 1 of {@token}:
+                    send "{@prefix} &cNemáš Kasino Žeton!" to {_p}
+                    stop
+                if {_p}'s balance < {anubis.bet::%{_p}%}:
+                    send "{@prefix} &cNemáš dostatek peněz!" to {_p}
+                    stop
+                
+                remove 1 of {@token} from {_p}
+                execute console command "eco take %{_p}% %{anubis.bet::%{_p}%}%"
+                payKasinoShare({_p})
+                
+                startAnubisGame({_p}, event-inventory)
+
+        else if {anubis.active::%{_p}%} is true:
+            if clicked slot is 13:
+                set {anubis.active::%{_p}%} to "CASHOUT"
+
+# --- 5. HLAVNÍ LOOP HRY ---
+function startAnubisGame(p: player, inv: inventory):
+    set {anubis.active::%{_p}%} to true
+    set {anubis.current_mult::%{_p}%} to 0.5 # START NA POLOVINĚ
+    set {anubis.current_inv::%{_p}%} to {_inv}
+    
+    loop 27 times:
+        set slot (loop-number - 1) of {_inv} to {@bg}
+    
+    set slot 13 of {_inv} to gold block named "&a&lVYBRAT VÝHRU" with lore "&7Aktuálně: &e0.5x"
+    
+    # --- MATEMATIKA CRASHE ---
+    # Minimálně 0.65, maximálně... teoreticky nekonečno (šance klesá)
+    set {_crashPoint} to random number between {@min_crash} and 2.0
+    if chance of 10%:
+        set {_crashPoint} to random number between 2.0 and 3.0
+    if chance of 2.5%:
+        set {_crashPoint} to random number between 3.0 and 5.0
+    if chance of 0.5%:
+        set {_crashPoint} to random number between 5.0 and 7.0
+
+    # Start loopu
+    loop 2000 times:
+        if {anubis.active::%{_p}%} is not true:
+            stop loop
+            
+        # Zvýšení násobitele (postupně se zrychluje)
+        if {anubis.current_mult::%{_p}%} < 2.0:
+            add 0.05 to {anubis.current_mult::%{_p}%}
+        else:
+            add 0.1 to {anubis.current_mult::%{_p}%}
+        
+        # Kontrola crashe
+        if {anubis.current_mult::%{_p}%} >= {_crashPoint}:
+            set {anubis.active::%{_p}%} to "CRASHED"
+            set slot 13 of {_inv} to redstone block named "&4&l!!! ANUBIS SE ROZZLOBIL !!!" with lore "&cZastaveno na: &e%{anubis.current_mult::%{_p}%}%x"
+            play sound "entity.generic.explode" at {_p}
+            send "{@prefix} &c&lCRASH! &7Bůh tě dostihl na &e%{anubis.current_mult::%{_p}%}%x&7." to {_p}
+            wait 1 seconds
+            close inventory of {_p}
+            delete {anubis.active::%{_p}%}
+            stop loop
+            
+        # Update GUI
+        set {_currentWin} to floor({anubis.bet::%{_p}%} * {anubis.current_mult::%{_p}%})
+        
+        # Barva násobitele v lore (červená pod 1x, zelená nad 1x)
+        set {_color} to "&c"
+        if {anubis.current_mult::%{_p}%} >= 1.0:
+            set {_color} to "&a"
+            
+        set slot 13 of {_inv} to gold block named "&a&lVYBRAT VÝHRU" with lore "&7Získáš: &e%{_currentWin}%$" and "&7Násobitel: %{_color}%%{anubis.current_mult::%{_p}%}%x"
+        
+        play sound "block.note_block.bit" with pitch ({anubis.current_mult::%{_p}%} / 2) at {_p}
+        
+        wait 3 ticks
+    
+    # Pokud hráč klikl na VYBRAT
+    if {anubis.active::%{_p}%} is "CASHOUT":
+        set {_finalWin} to floor({anubis.bet::%{_p}%} * {anubis.current_mult::%{_p}%})
+        execute console command "eco give %{_p}% %{_finalWin}%"
+        send "{@prefix} &a&lVYBRÁNO! &fUtekl jsi s &e%{_finalWin}%$&f!" to {_p}
+        play sound "entity.player.levelup" at {_p}
+        
+        set slot 13 of {_inv} to emerald block named "&a&lVYBRÁNO!" with lore "&7Tvoje výhra: &e%{_finalWin}%$"
+        delete {anubis.active::%{_p}%}
+        wait 1 seconds
+        close inventory of {_p}
+
+# --- 6. POJISTKY ---
+on inventory close:
+    if name of event-inventory is "Hněv Anubise":
+        if {anubis.active::%player%} is true:
+            wait 1 tick
+            open {anubis.current_inv::%player%} to player
+            send action bar "&c&lPřed hněvem bohů neutečeš!" to player
+
+on quit:
+    delete {anubis.active::%player%}

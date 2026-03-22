@@ -1,0 +1,234 @@
+# =================================================================
+# PRÁCE: KOVÁŘSTVÍ (ŽELEZO + ZLATO) - SECURE CMD VERSION
+# =================================================================
+
+options:
+    # Custom Model Data registry (podle tvého standardu)
+    cmd_coal: 1102
+    cmd_iron_ore: 1103
+    cmd_gold_ore: 1104
+    cmd_hammer: 1004
+    
+    cmd_hot_iron: 1301
+    cmd_hot_gold: 1302
+    cmd_forged_iron: 1303
+    cmd_forged_gold: 1304
+    
+    cmd_steel_final: 1401
+    cmd_gold_final: 1402
+
+    # Názvy
+    hammer_name: "&8&lKovářské kladivo"
+    steel_name: "&b&lKrálovská ocel"
+    king_gold_name: "&6&lKrálovské zlato"
+    
+    # Časy
+    heat_time: 5 seconds
+
+# --- 1. NASTAVENÍ DÍLNY ---
+command /setkovarna <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "1":
+            set {mesto.kovarna.pos1} to location of player
+            send "&8[Kovář] &f1. bod dílny nastaven."
+        else if arg-1 is "2":
+            set {mesto.kovarna.pos2} to location of player
+            send "&8[Kovář] &f2. bod dílny nastaven."
+
+# --- 2. ADMIN GIVE (BEZPEČNÉ KLADIVO) ---
+command /dejkladivo:
+    permission: rp.admin
+    trigger:
+        set {_i} to iron pickaxe named {@hammer_name}
+        set lore of {_i} to "&7Těžké kladivo pro tvarování kovu."
+        set custom model data of {_i} to {@cmd_hammer}
+        #enchant {_i} with unbreaking 3
+        give {_i} to player
+
+# --- 3. FÁZE 1: NAHŘÍVÁNÍ (BLAST FURNACE) ---
+on right click on blast furnace:
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+            cancel event
+            
+            if player does not have permission "rp.work.kovar":
+                send action bar "&cPráce kováře je pouze pro &6&lVIP &chráče!" to player
+                stop
+            
+            # 2. Kontrola uhlí (CMD 1102)
+            set {_hasCoal} to false
+            loop all items in player's inventory:
+                if custom model data of loop-item is {@cmd_coal}:
+                    set {_hasCoal} to true
+                    set {_coalItem} to loop-item
+                    stop loop
+            
+            if {_hasCoal} is false:
+                send "&cK roztopení pece potřebuješ Uhlí z dolu!" to player
+                play sound "block.note_block.bass" at player
+                stop
+
+            # Kontrola CMD rudy v ruce
+            set {_cmd} to custom model data of player's tool
+            set {_type} to "none"
+            if {_cmd} is {@cmd_iron_ore}:
+                set {_type} to "iron"
+            else if {_cmd} is {@cmd_gold_ore}:
+                set {_type} to "gold"
+            
+            if {_type} is not "none":
+                if {smith.heating::%location of event-block%} is set:
+                    send "&cTato pec už je obsazená!" to player
+                    stop
+                
+                remove 1 of player's tool from player
+                
+                # Odebereme 1 uhlí
+                remove 1 of {_coalItem} from player's inventory
+                set {smith.heating::%location of event-block%} to true
+                set {smith.type::%location of event-block%} to {_type}
+                
+                play sound "block.blastfurnace.fire_crackle" at event-block
+                send action bar "&6Nahřívám kov v peci..." to player
+                
+                wait {@heat_time}
+                
+                set {smith.ready::%location of event-block%} to true
+                play sound "block.fire.ambient" at event-block
+                loop 30 times: 
+                    if {smith.ready::%location of event-block%} is not set:
+                        stop
+                    show flame particles at location 1 meter above event-block
+                    send action bar "&c&lKOV JE ŽHAVÝ! VYNDEJ HO!" to player
+                    wait 0.5 second
+                
+                # Spálení
+                if {smith.ready::%location of event-block%} is set:
+                    delete {smith.ready::%location of event-block%}
+                    delete {smith.heating::%location of event-block%}
+                    delete {smith.type::%location of event-block%}
+                    play sound "block.lava.extinguish" at event-block
+                    drop 1 coal named "&8Spálená struska" at event-block
+
+# --- VYNDÁNÍ Z PECE ---
+on right click on blast furnace:
+    if {smith.ready::%location of event-block%} is set:
+        cancel event
+        if player's tool is air:
+            set {_type} to {smith.type::%location of event-block%}
+            delete {smith.ready::%location of event-block%}
+            delete {smith.heating::%location of event-block%}
+            delete {smith.type::%location of event-block%}
+            
+            if {_type} is "iron":
+                set {_i} to magma cream named "&c&lRozžhavené železo"
+                set custom model data of {_i} to {@cmd_hot_iron}
+            else:
+                set {_i} to magma cream named "&6&lRozžhavené zlato"
+                set custom model data of {_i} to {@cmd_hot_gold}
+            
+            set lore of {_i} to "&7Pálí! Polož na kovadlinu a kovej!"
+            give {_i} to player
+            play sound "item.firecharge.use" at player
+            apply fire resistance 1 to player for 2 seconds
+
+# --- 4. FÁZE 2: KOVÁNÍ (ANVIL + UHLÍ + KLADIVO) ---
+on right click on anvil:
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+            cancel event
+
+            # 1. Kontrola rozžhaveného kovu v ruce skrze CMD
+            set {_cmdHand} to custom model data of player's tool
+            if {_cmdHand} is not {@cmd_hot_iron} or {@cmd_hot_gold}:
+                stop
+
+            # 3. Kontrola kladiva v inventáři (CMD 1004)
+            set {_hasHammer} to false
+            loop all items in player's inventory:
+                if custom model data of loop-item is {@cmd_hammer}:
+                    set {_hasHammer} to true
+                    set {_hammerItem} to loop-item
+                    stop loop
+            
+            if {_hasHammer} is false:
+                send "&cPotřebuješ Kovářské kladivo!" to player
+                stop
+
+            # --- SPUŠTĚNÍ KOVÁNÍ ---
+            if {smith.hammering::%player%} is set:
+                stop
+            set {smith.hammering::%player%} to true
+            
+            
+            set {_max} to 5
+            if {_cmdHand} is {@cmd_hot_gold}:
+                set {_max} to 3 # Zlato je měkčí
+            
+            loop {_max} times:
+                send action bar "&8Kování... [%loop-number%/%{_max}%]" to player
+                play sound "block.anvil.use" with pitch (0.6 + (loop-number / 5)) at event-block
+                wait 10 ticks
+            
+            # Výsledek kování (Polotovar)
+            remove 1 of player's tool from player
+            
+            if {_cmdHand} is {@cmd_hot_iron}:
+                set {_res} to brick named "&c&lVytvarované horké železo"
+                set custom model data of {_res} to {@cmd_forged_iron}
+            else:
+                set {_res} to brick named "&6&lVytvarované horké zlato"
+                set custom model data of {_res} to {@cmd_forged_gold}
+            
+            set lore of {_res} to "&7Tvar je hotov. Teď zbývá kalení ve vodě."
+            give {_res} to player
+            
+            # --- POŠKOZENÍ KLADIVA ---
+            # 1. Odebereme původní (nepoškozené) kladivo z inventáře
+            remove 1 of {_hammerItem} from player's inventory
+            
+            # 2. Poškodíme lokální kopii o 1
+            damage {_hammerItem} by 1
+            
+            # 3. Zkontrolujeme, jestli se nezlomilo
+            if damage of {_hammerItem} < max durability of {_hammerItem}:
+                # Pokud ještě něco vydrží, vrátíme ho hráči do inventáře
+                give {_hammerItem} to player
+            else:
+                # Pokud už nevydrží, nic nevracíme (tím se zničí) a dáme vědět
+                play sound "entity.item.break" at player
+                send "&c&lTvé kovářské kladivo se zlomilo!" to player
+            
+            delete {smith.hammering::%player%}
+
+# --- 5. FÁZE 3: KALENÍ (CAULDRON) ---
+on right click on water cauldron:
+    if {mesto.kovarna.pos1} is set:
+        if location of event-block is within {mesto.kovarna.pos1} and {mesto.kovarna.pos2}:
+            
+            set {_cmd} to custom model data of player's tool
+            
+            if {_cmd} is {@cmd_forged_iron} or {@cmd_forged_gold}:
+                cancel event
+                remove 1 of player's tool from player
+                
+                play sound "block.lava.extinguish" with volume 1 at event-block
+                show 20 cloud particles at location 1 meter above event-block
+                send action bar "&bKalení kovu ve vodě..." to player
+                wait 1 second
+                
+                if {_cmd} is {@cmd_forged_iron}:
+                    set {_final} to iron ingot named {@steel_name}
+                    set custom model data of {_final} to {@cmd_steel_final}
+                    set lore of {_final} to "&bPrvotřídní ocel."
+                else:
+                    set {_final} to gold ingot named {@king_gold_name}
+                    set custom model data of {_final} to {@cmd_gold_final}
+                    set lore of {_final} to "&6Čisté královské zlato."
+                
+                give {_final} to player
+                play sound "entity.experience_orb.pickup" at player
+
+on quit:
+    delete {smith.hammering::%player%}

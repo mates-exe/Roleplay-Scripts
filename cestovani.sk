@@ -1,0 +1,99 @@
+# =================================================================
+# SYSTÉM CESTOVÁNÍ A PAŠOVÁNÍ - S PERMANENTKOU
+# =================================================================
+
+options:
+    ticket_name: &6Jízdenka do Alexandrie
+    pass_name: &b&lPermanentka do Alexandrie
+    drug_name: &d&lEsence z Purpurového Lotosu
+    global_cooldown: 30 seconds
+
+# --- 1. ADMIN PŘÍKAZ NA JÍZDENKU ---
+command /dejjizdenku:
+    permission: rp.admin
+    trigger:
+        give 1 of paper named "{@ticket_name}" with lore "&7Platná jízdenka pro jednu cestu" and "&7do pouštního města Alexandrie." to player
+        send "&e[Cesty] &fDostal jsi jízdenku." to player
+
+# --- 1B. ADMIN PŘÍKAZ NA PERMANENTKU ---
+command /dejpermanentku:
+    permission: rp.admin
+    trigger:
+        give 1 of nether star named "{@pass_name}" with lore "&7Neomezené cestování do Alexandrie." and "&7Není potřeba jízdenka." to player
+        send "&e[Cesty] &fDostal jsi permanentku." to player
+
+# --- 2. HLAVNÍ PŘÍKAZ PRO CESTOVÁNÍ ---
+command /cestuj <text>:
+    trigger:
+        # ==========================================
+        # CESTA DO ALEXANDRIE
+        # ==========================================
+        if arg-1 is "alexandrie":
+
+            # --- A) COOLDOWN ---
+            if {global.alex_travel_last} is set:
+                set {_waited} to difference between {global.alex_travel_last} and now
+                if {_waited} is less than {@global_cooldown}:
+                    set {_rem} to {@global_cooldown}
+                    remove {_waited} from {_rem}
+                    send "&c[Karavana] &7Právě jedna skupina odcestovala. Loď se vrací za %{_rem}%." to player
+                    stop
+
+            # --- B) ZJISTÍME, ČÍM HRÁČ PLATÍ ---
+            set {_hasPass} to false
+            set {_hasTicket} to false
+
+            if player has nether star named "{@pass_name}":
+                set {_hasPass} to true
+            else if player has paper named "{@ticket_name}":
+                set {_hasTicket} to true
+            else:
+                send "&c[Cesty] &7Bez platné jízdenky nebo permanentky tě karavana do pouště nevezme!" to player
+                stop
+
+            # --- C) ODEBRÁNÍ JÍZDENKY (POUZE KDYŽ NENÍ PERMANENTKA) ---
+            if {_hasTicket} is true:
+                remove 1 of paper named "{@ticket_name}" from player
+                send "&6[Cesty] &fPředal jsi jízdenku." to player
+            else:
+                send "&b[Cesty] &fUkázal jsi permanentku." to player
+
+            # --- D) SPOLEČNÝ ODJEZD ---
+            set {global.alex_travel_last} to now
+            #play sound "entity.horse.gallop" with volume 1 at player
+
+            #wait 2 seconds
+            teleport player to location(-1214.70, 62.00, 1049.51)
+            play sound "block.end_portal.spawn" with volume 0.5 at player
+            send "&e&lVítej v Alexandrii!" to player
+
+
+        # ==========================================
+        # CESTA ZPĚT DO MĚSTA
+        # ==========================================
+        else if arg-1 is "mesto":
+            
+            send "&6[Cesty] &fVracíš se zpět do hlavního města..." to player
+            
+            set {_foundDrug} to 0
+            
+            loop all items in player's inventory:
+                if name of loop-item is "{@drug_name}":
+                    add item amount of loop-item to {_foundDrug}
+            
+            if {_foundDrug} > 0:
+                if chance of 50%:
+                    set {_toTake} to ceil({_foundDrug} / 2)
+                    remove {_toTake} of purple dye named "{@drug_name}" from player's inventory
+                    
+                    play sound "entity.villager.no" with volume 1 at player
+                    send "&4&l[!] PŘEPADENÍ: &cNa hranicích tě prohledali a zabavili ti %{_toTake}%ks pašované drogy!" to player
+                else:
+                    send "&a&l[!] ŠTĚSTÍ: &fPodařilo se ti pronést pašované zboží přes hlídky." to player
+
+            teleport player to location(1812.30, 62.00, 736.48)
+            play sound "entity.minecart.riding" with volume 0.5 at player
+            send "&a&lDorazil jsi do hlavního města." to player
+
+        else:
+            send "&cPoužití: /cestuj <alexandrie/mesto>" to player

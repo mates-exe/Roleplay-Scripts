@@ -1,0 +1,40 @@
+# =================================================================
+# OCHRANA RP NÁZVŮ V KOVADLINĚ - OPRAVENÁ VERZE
+# =================================================================
+
+on anvil prepare:
+    # Slot 2 je výsledek (to, co hráč vidí úplně vpravo)
+    set {_result} to slot 2 of event-inventory
+    
+    # Pokud tam není žádný výsledek (hráč nic nepřejmenovává), stop
+    if {_result} is air:
+        stop
+
+    # Získáme jméno výsledného itemu bez barev a formátování
+    set {_t} to uncolored name of {_result}
+
+    # SEZNAM ZAKÁZANÝCH NÁZVŮ
+    if {_t} contains "Vinná réva" or "Červené víno" or "Nůžky na vínečko":
+        set {_block} to true
+    else if {_t} contains "Med" or "Medová plástev" or "Sběrka na med":
+        set {_block} to true
+    else if {_t} contains "Kořen mandragory" or "Krvavá sůl" or "Esence šílenství":
+        set {_block} to true
+    else if {_t} contains "Opiový prášek" or "Opium":
+        set {_block} to true
+    else if {_t} contains "Purpurový Lotos" or "Esence z Purpurového Lotosu":
+        set {_block} to true
+    else if {_t} contains "Květ trávy" or "Nadrcená tráva" or "Kvalitní Joint":
+        set {_block} to true
+    else if {_t} contains "Hornický krumpáč" or "Alexandrijský krumpáč" or "Lopata na říční bahno":
+        set {_block} to true
+    else if {_t} contains "Surová kůže" or "Mokrá kůže" or "Vydělaná kůže":
+        set {_block} to true
+    else if {_t} contains "Faraonovo oko" or "Pochodeň proti kletbě" or "Plány pyramidy" or "Kasino žeton":
+        set {_block} to true
+
+    # Pokud je název zakázaný, smažeme výsledek
+    if {_block} is true:
+        set slot 2 of event-inventory to air
+        # Nastavení ceny na 0 zabrání vizuálnímu bugu, kdy by hráč mohl na slot kliknout
+        set repair cost of event-inventory to 9999

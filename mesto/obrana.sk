@@ -1,0 +1,167 @@
+# =================================================================
+# TOWER DEFENSE - STŘELNICE (Verze s Cooldownem)
+# =================================================================
+
+options:
+    cooldown_time: 2 minutes # Zde si nastav délku cooldownu
+
+# --- 1. NASTAVENÍ (Admin) ---
+command /td <text>:
+    permission: rp.admin
+    trigger:
+        if arg-1 is "tower":
+            set {td.tower} to location of player
+            send "&b[TD] &fVěž nastavena." to player
+        else if arg-1 is "spawn":
+            set {td.spawn} to location of player
+            send "&b[TD] &fSpawn barbarů nastaven." to player
+        else if arg-1 is "target":
+            set {td.target} to location of player
+            send "&b[TD] &fCíl (vesničan) nastaven." to player
+                # --- NOVÉ: NASTAVENÍ LOKACE ZVONU ---
+        else if arg-1 is "bell1":
+            set {td.bell.pos1} to location of player
+            send "&b[TD] &fPrvní roh pro aktivaci zvonu nastaven." to player
+        else if arg-1 is "bell2":
+            set {td.bell.pos2} to location of player
+            send "&b[TD] &fDruhý roh pro aktivaci zvonu nastaven." to player
+        else if arg-1 is "reset":
+            delete {td.cooldown}
+            delete {td.active_player}
+            send "&b[TD] &aCooldown i stav hry byl resetován." to player
+        else:
+            send "&e/td <tower | spawn | target | reset>" to player
+
+# --- 2. START HRY (Zvon v regionu) ---
+on right click on bell:
+    # Kontrola, zda jsou body pro zvon nastaveny
+    if {td.bell.pos1} is not set:
+        stop
+    if {td.bell.pos2} is not set:
+        stop
+
+    # Kontrola, zda je kliknutý zvon uvnitř nastaveného regionu
+    if location of event-block is within {td.bell.pos1} and {td.bell.pos2}:
+        
+        if player has permission "rp.straz":
+            
+            # --- KONTROLA COOLDOWNU ---
+            if {td.cooldown} is set:
+                set {_waited} to difference between {td.cooldown} and now
+                if {_waited} < {@cooldown_time}:
+                    set {_remaining} to {@cooldown_time}
+                    remove {_waited} from {_remaining}
+                    send "&c[TD] &7Další útok bude možný za: &e%{_remaining}%" to player
+                    stop
+
+            if {td.active_player} is set:
+                send "&cStřelnice je obsazena!" to player
+                stop
+                
+            if {td.tower} or {td.spawn} or {td.target} is not set:
+                send "&cAdmin ještě nenastavil všechna místa (tower, spawn, target)!" to player
+                stop
+
+            set {td.back_loc::%player%} to location of player
+            set {td.active_player} to player
+            set {td.score::%player%} to 0
+            set {td.total_mobs} to 6
+            
+            broadcast "&8[&6POPLACH&8] &e%player% &7brání hradby! Barbaři útočí!"
+            teleport player to {td.tower}
+            
+            spawn 1 villager at {td.target}
+            set {_decoy} to last spawned entity
+            set display name of {_decoy} to "&6&lCíl útoku"
+            apply slowness 10 to {_decoy} for 999 days
+            set gravity of {_decoy} to off
+            
+            wait 1 second
+            loop {td.total_mobs} times:
+                spawn 1 vindicator at {td.spawn}
+                set {_m} to last spawned entity
+                set display name of {_m} to "&4&lNájezdník"
+                set target of {_m} to {_decoy}
+                wait 1.5 seconds 
+                
+        else:
+            send "&cJen stráž může spustit cvičení!" to player
+
+# --- 3. LOGIKA KONTROLY (Každou vteřinu) ---
+every 1 second:
+    if {td.active_player} is set:
+        set {_p} to {td.active_player}
+        
+        set {_target_npc} to air
+        loop all villagers:
+            if display name of loop-villager is "&6&lCíl útoku":
+                set {_target_npc} to loop-villager
+                stop loop
+
+        loop all vindicators:
+            if display name of loop-vindicator is "&4&lNájezdník":
+                remove slowness from loop-vindicator
+                if distance between loop-vindicator and {_target_npc} < 2:
+                    send "&c&lPROHRÁL JSI! &7Barbaři pronikli do města!" to {_p}
+                    cleanupTD({_p})
+                    # I při prohře nastavíme cooldown (aby se nespamovalo)
+                    set {td.cooldown} to now
+                    stop
+
+        if distance between {_p} and {td.tower} > 20:
+            teleport {_p} to {td.tower}
+
+# --- 4. IGNORE ATTACKER + ANTI SLOWNESS ---
+on damage:
+    if display name of victim is "&4&lNájezdník":
+        if attacker is a player:
+            wait 1 tick
+            remove slowness from victim
+            loop all villagers:
+                if display name of loop-villager is "&6&lCíl útoku":
+                    set target of victim to loop-villager
+                    stop loop
+
+# --- 5. SMRT BARBARA ---
+on death:
+    if display name of victim is "&4&lNájezdník":
+        clear drops
+        # set dropped experience to 0
+        
+        set {_p} to {td.active_player}
+        add 1 to {td.score::%{_p}%}
+        send action bar "&fZbylo: &e%({td.total_mobs} - {td.score::%{_p}%})% &fbarbarů" to {_p}
+        
+        if {td.score::%{_p}%} >= {td.total_mobs}:
+            send "&a&lVÍTĚZSTVÍ! &fOdrazil jsi útok." to {_p}
+            execute console command "/eco give %{_p}% 250"
+            
+            # NASTAVENÍ COOLDOWNU PO VÝHŘE
+            set {td.cooldown} to now
+            cleanupTD({_p})
+
+# --- 6. POMOCNÉ FUNKCE ---
+function cleanupTD(p: player):
+    loop all vindicators:
+        if display name of loop-vindicator is "&4&lNájezdník":
+            delete loop-vindicator
+    loop all villagers:
+        if display name of loop-villager is "&6&lCíl útoku":
+            delete loop-villager
+    teleport {_p} to {td.back_loc::%{_p}%}
+    delete {td.active_player}
+    delete {td.score::%{_p}%}
+    delete {td.back_loc::%{_p}%}
+
+on damage of villager:
+    if display name of victim is "&6&lCíl útoku":
+        cancel event
+
+on load:
+    loop all villagers:
+        if display name of loop-villager is "&6&lCíl útoku":
+            delete loop-villager
+    loop all vindicators:
+        if display name of loop-vindicator is "&4&lNájezdník":
+            delete loop-vindicator
+    delete {td.active_player}

@@ -1,0 +1,166 @@
+# =================================================================
+# LEGENDÁRNÍ ARTEFAKTY v3.0 - KOMPLETNÍ SBÍRKA
+# =================================================================
+
+options:
+    prefix: &8[&6Artefakty&8] &r
+
+# --- 1. ADMIN GIVE PŘÍKAZ ---
+command /legendarygive <player> <text>:
+    permission: rp.admin
+    usage: /legendarygive <nick> <jméno_zbraně/all>
+    trigger:
+        # --- POMOCNÁ LOGIKA PRO JEDNOTLIVÉ ZBRANĚ ---
+        if arg-2 is "stormcaller" or "all":
+            set {_i} to mace named "&b&lStormcaller"
+            set lore of {_i} to "&7Úderem vyvolá hněv nebes." and "" and "&b&lEFEKT: &fBleskový úder"
+            set custom model data of {_i} to 4001
+            give {_i} to arg-1
+        
+        if arg-2 is "soulreaper" or "all":
+            set {_i} to iron sword named "&5&lSoul Reaper"
+            set lore of {_i} to "&7Vysává životní sílu z oběti." and "" and "&5&lEFEKT: &fLéčení (Lifesteal)"
+            enchant {_i} with sharpness 3
+            set custom model data of {_i} to 4002
+            give {_i} to arg-1
+            
+        if arg-2 is "earthbreaker" or "all":
+            set {_i} to iron sword named "&6&lEarthbreaker"
+            set lore of {_i} to "&7Těžká zbraň, která otřese zemí." and "" and "&6&lEFEKT: &fOchromení a odhození"
+            enchant {_i} with sharpness 3
+            set custom model data of {_i} to 4003
+            give {_i} to arg-1
+            
+        if arg-2 is "desertsting" or "all":
+            set {_i} to iron sword named "&e&lDesert Sting"
+            set lore of {_i} to "&7Čepel potřená jedem nejjedovatějších štírů." and "" and "&e&lEFEKT: &fSilný jed"
+            enchant {_i} with sharpness 3
+            set custom model data of {_i} to 4004
+            give {_i} to arg-1
+
+        if arg-2 is "frostmourne" or "all":
+            set {_i} to iron sword named "&f&lFrostmourne"
+            set lore of {_i} to "&7Čepel, která zmrazí krev v žilách." and "" and "&f&lEFEKT: &fZmrazení na místě"
+            enchant {_i} with sharpness 3
+            set custom model data of {_i} to 4005
+            give {_i} to arg-1
+
+        if arg-2 is "solarflare" or "all":
+            set {_i} to bow named "&6&lSolar Flare"
+            set lore of {_i} to "&7Šípy ukované v jádru slunce." and "" and "&6&lEFEKT: &fOhnivá exploze"
+            set custom model data of {_i} to 4006
+            give {_i} to arg-1
+
+        #if arg-2 is "abyssal" or "all":
+        #    set {_i} to iron sword named "&0&lAbyssal Blade"
+        #    set lore of {_i} to "&7Umožňuje přechod stíny přímo za oběť." and "" and "&0&lEFEKT: &fTeleport za záda"
+        #    enchant {_i} with sharpness 3
+        #    set custom model data of {_i} to 4007
+        #    give {_i} to arg-1
+
+        if arg-2 is "mjollnir" or "all":
+            set {_i} to mace named "&e&lMjöllnir"
+            set lore of {_i} to "&7Kladivo bohů, které drtí gravitaci." and "" and "&e&lEFEKT: &fGravitační tlak"
+            set custom model data of {_i} to 4008
+            give {_i} to arg-1
+
+        if arg-2 is "all":
+            send "{@prefix} &fPředal jsi &6kompletní sbírku &fhráči &e%arg-1%&f." to player
+        else:
+            send "{@prefix} &fPředal jsi legendární zbraň &6%arg-2% &fhráči &e%arg-1%&f." to player
+
+# --- 2. LOGIKA EFEKTŮ ---
+on damage:
+    attacker is a player
+    set {_cmd} to custom model data of attacker's tool
+    
+    # STORMCALLER
+    if {_cmd} is 4001:
+        if {cd.storm::%attacker%} is set:
+            if difference between {cd.storm::%attacker%} and now < 3 seconds:
+                stop
+        set {cd.storm::%attacker%} to now
+        strike lightning effect at victim
+        damage victim by 2 hearts
+        play sound "entity.lightning_bolt.thunder" with volume 2 and pitch 0.5 at victim
+        send action bar "&b&l⚡ HNĚV NEBES ⚡" to attacker
+
+    # SOUL REAPER
+    else if {_cmd} is 4002:
+        heal attacker by 1 heart
+        execute console command "particle minecraft:dragon_breath %x-coord of victim% %y-coord of victim + 1% %z-coord of victim% 0.3 0.5 0.3 0.05 15 force"
+        play sound "entity.wither.spawn" with volume 0.8 and pitch 1.5 at victim
+        send action bar "&5&l☠ POHLCENÍ DUŠE ☠" to attacker
+
+    # EARTHBREAKER
+    else if {_cmd} is 4003:
+        if {cd.earth::%attacker%} is set:
+            if difference between {cd.earth::%attacker%} and now < 4 seconds:
+                stop
+        set {cd.earth::%attacker%} to now
+        apply slowness 4 to victim for 3 seconds
+        push victim upwards at speed 0.5
+        push victim (vector between attacker and victim) at speed 1.5
+        play sound "entity.warden.sonic_boom" with volume 2 and pitch 0.5 at victim
+        send action bar "&6&l💥 ZEMĚTŘESENÍ 💥" to attacker
+
+    # DESERT STING
+    else if {_cmd} is 4004:
+        apply poison 3 to victim for 5 seconds
+        execute console command "particle minecraft:crit %x-coord of victim% %y-coord of victim + 1% %z-coord of victim% 0.3 0.5 0.3 0.1 20 force"
+        play sound "entity.spider.hiss" with volume 1 and pitch 0.5 at victim
+        send action bar "&e&l🦂 ŽIHADLO ŠTÍRA 🦂" to attacker
+
+    # FROSTMOURNE
+    else if {_cmd} is 4005:
+        if {cd.frost::%attacker%} is set:
+            if difference between {cd.frost::%attacker%} and now < 5 seconds:
+                stop
+        set {cd.frost::%attacker%} to now
+        apply slowness 10 to victim for 3 seconds
+        execute console command "particle minecraft:snowflake %x-coord of victim% %y-coord of victim + 1% %z-coord of victim% 0.5 0.5 0.5 0.1 30 force"
+        play sound "block.glass.break" with volume 2 and pitch 0.5 at victim
+        send action bar "&f&l❄ TVÁ KREV MRZNE! ❄" to attacker
+
+    # ABYSSAL BLADE
+    else if {_cmd} is 4007:
+        if {cd.void::%attacker%} is set:
+            if difference between {cd.void::%attacker%} and now < 8 seconds:
+                stop
+        set {cd.void::%attacker%} to now
+        teleport attacker to location 1.5 meters behind victim
+        execute console command "particle minecraft:portal %x-coord of attacker% %y-coord of attacker + 1% %z-coord of attacker% 0.5 0.5 0.5 0.1 50 force"
+        play sound "entity.enderman.teleport" with volume 2 and pitch 0.5 at attacker
+        send action bar "&0&l🌑 ÚTOK ZE STÍNŮ 🌑" to attacker
+
+    # MJOLLNIR
+    else if {_cmd} is 4008:
+        if {cd.gravity::%attacker%} is set:
+            if difference between {cd.gravity::%attacker%} and now < 6 seconds:
+                stop
+        set {cd.gravity::%attacker%} to now
+        apply levitation 10 to victim for 1 second
+        wait 1 second
+        push victim downwards at speed 2
+        play sound "entity.shulker.shoot" with volume 2 and pitch 0.5 at victim
+        play sound "block.anvil.land" with volume 2 at victim
+        send action bar "&e&l🔨 GRAVITAČNÍ DRTIČ 🔨" to attacker
+
+# SOLAR FLARE (Luk - projektil)
+on damage:
+    damage cause is projectile
+    attacker is a player
+    set {_cmdBow} to custom model data of attacker's tool
+    if {_cmdBow} is 4006:
+        execute console command "particle minecraft:flame %x-coord of victim% %y-coord of victim + 1% %z-coord of victim% 0.5 0.5 0.5 0.1 50 force"
+        ignite victim for 5 seconds
+        damage victim by 1.5 hearts
+        play sound "entity.generic.explode" with volume 1 and pitch 1.5 at victim
+        send action bar "&6&l🔥 SLUNEČNÍ ŽÁR 🔥" to attacker
+
+on quit:
+    delete {cd.storm::%player%}
+    delete {cd.earth::%player%}
+    delete {cd.frost::%player%}
+    delete {cd.void::%player%}
+    delete {cd.gravity::%player%}
